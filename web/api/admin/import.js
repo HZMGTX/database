@@ -59,8 +59,10 @@ export default handler(
         if (batch.length >= chunk) { exhausted = false; break; }
         try {
           const doc = JSON.parse(text);
-          // The first line of the export is a header describing it, not an item.
-          if (doc._vault) { continue; }
+          // The first line of the export is a header describing it, not an
+          // item. "_vault" is the pre-rename spelling, still accepted so a
+          // file exported before the rename still imports.
+          if (doc._db || doc._vault) { continue; }
           if (!doc.uid || !doc.kind) continue;
           batch.push(doc);
         } catch {
@@ -118,6 +120,12 @@ export default handler(
       }
 
       if (exhausted) {
+        // The per-row filing above only reads `repo/<x>` tags. Everything
+        // that names its project another way is still unfiled, and the
+        // counts were moved by a bulk insert the row trigger never saw in
+        // its final state. One function does both, and the schema calls the
+        // same one, so the two cannot drift apart.
+        await client.query("SELECT reconcile_projects()");
         await client.query(
           "UPDATE import_progress SET finished_at = now() WHERE name = $1", [NAME]);
       }

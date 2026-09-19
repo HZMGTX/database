@@ -12,13 +12,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import VaultTestCase  # noqa: E402
+from support import DatabaseTestCase  # noqa: E402
 
-from vault import model, search  # noqa: E402
-from vault.search.parse import QueryError, compile_query, fts_quote  # noqa: E402
+from db import model, search  # noqa: E402
+from db.search.parse import QueryError, compile_query, fts_quote  # noqa: E402
 
 
-class TestTokenizer(VaultTestCase):
+class TestTokenizer(DatabaseTestCase):
 
     def setUp(self):
         super().setUp()
@@ -50,7 +50,7 @@ class TestTokenizer(VaultTestCase):
         self.assertIn("budget", hit.snippet.lower())
 
 
-class TestIndexIntegrity(VaultTestCase):
+class TestIndexIntegrity(DatabaseTestCase):
 
     def test_integrity_check_detects_drift(self):
         """Regression: the whole correctness net rested on the wrong call.
@@ -58,7 +58,7 @@ class TestIndexIntegrity(VaultTestCase):
         `INSERT INTO item_fts(item_fts) VALUES('integrity-check')` does NOT
         detect an external-content index that has drifted from its content
         table -- verified, it passes happily. Only the rank=1 form is
-        content-aware. This asserts the form Vault uses actually catches it.
+        content-aware. This asserts the form The database uses actually catches it.
         """
         import sqlite3
         model.create(self.db, title="alpha", body="alpha")
@@ -95,7 +95,7 @@ class TestIndexIntegrity(VaultTestCase):
         self.assertEqual(len(search.search(self.db, "findable").hits), 1)
 
 
-class TestQuoting(VaultTestCase):
+class TestQuoting(DatabaseTestCase):
 
     def test_fts_syntax_in_user_input_is_neutralised(self):
         """Raw, each of these is an FTS5 syntax error. Quoted, none is."""
@@ -118,7 +118,7 @@ class TestQuoting(VaultTestCase):
         self.assertNotIn("drop", titles)
 
 
-class TestQueryLanguage(VaultTestCase):
+class TestQueryLanguage(DatabaseTestCase):
 
     def setUp(self):
         super().setUp()
@@ -182,7 +182,7 @@ class TestQueryLanguage(VaultTestCase):
         self.assertEqual(page.total, 6)
 
 
-class TestShortAndUnsegmentedTerms(VaultTestCase):
+class TestShortAndUnsegmentedTerms(DatabaseTestCase):
 
     def test_two_character_cjk_is_found(self):
         """FTS5's trigram tokenizer cannot match terms under 3 characters,
@@ -203,7 +203,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class AdvertisedVocabularyTest(VaultTestCase):
+class AdvertisedVocabularyTest(DatabaseTestCase):
     """Whatever the error message offers has to work.
 
     `is:attached` and `has:props` were both listed in the "Try:" line and
@@ -217,7 +217,7 @@ class AdvertisedVocabularyTest(VaultTestCase):
     """
 
     def test_every_advertised_flag_parses(self) -> None:
-        from vault.search.parse import FLAG_VALUES, QueryError, compile_query
+        from db.search.parse import FLAG_VALUES, QueryError, compile_query
 
         for flag in sorted(FLAG_VALUES):
             with self.subTest(flag=flag):
@@ -227,7 +227,7 @@ class AdvertisedVocabularyTest(VaultTestCase):
                     self.fail(f"is:{flag} is advertised but rejected: {exc}")
 
     def test_every_advertised_structure_parses(self) -> None:
-        from vault.search.parse import STRUCTURE_VALUES, QueryError, compile_query
+        from db.search.parse import STRUCTURE_VALUES, QueryError, compile_query
 
         for what in sorted(STRUCTURE_VALUES):
             with self.subTest(has=what):
@@ -238,7 +238,7 @@ class AdvertisedVocabularyTest(VaultTestCase):
 
     def test_an_unknown_flag_only_suggests_flags_that_work(self) -> None:
         """The suggestion list is the thing that was wrong, so check it."""
-        from vault.search.parse import QueryError, compile_query
+        from db.search.parse import QueryError, compile_query
 
         with self.assertRaises(QueryError) as caught:
             compile_query("is:nonsense")
@@ -250,8 +250,8 @@ class AdvertisedVocabularyTest(VaultTestCase):
 
     def test_the_flags_run_against_a_real_database(self) -> None:
         """Parsing is not enough: the SQL each flag builds must execute."""
-        from vault import model, search
-        from vault.search.parse import FLAG_VALUES, STRUCTURE_VALUES
+        from db import model, search
+        from db.search.parse import FLAG_VALUES, STRUCTURE_VALUES
 
         model.create(self.db, kind="note", title="something", body="text",
                      tags=["work"])

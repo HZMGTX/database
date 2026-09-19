@@ -13,10 +13,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import UTC, VaultTestCase  # noqa: E402
+from support import UTC, DatabaseTestCase  # noqa: E402
 
 
-class TestFacetGuard(VaultTestCase):
+class TestFacetGuard(DatabaseTestCase):
     """The composite foreign key that makes facet invariants real."""
 
     def test_facet_cannot_attach_to_the_wrong_kind(self):
@@ -75,7 +75,7 @@ class TestFacetGuard(VaultTestCase):
                 (task,))
 
 
-class TestAuditLedgerSurvivesDeletion(VaultTestCase):
+class TestAuditLedgerSurvivesDeletion(DatabaseTestCase):
 
     def test_hard_delete_writes_audit_row(self):
         """Regression: change_log.item_id once had a foreign key to item(id)
@@ -99,7 +99,7 @@ class TestAuditLedgerSurvivesDeletion(VaultTestCase):
         self.assertEqual(row[1], uid, "row_uid is what identifies a purged item")
 
 
-class TestBlobRefcounting(VaultTestCase):
+class TestBlobRefcounting(DatabaseTestCase):
 
     def _blob(self, digest="a" * 64):
         self.conn.execute(
@@ -113,7 +113,7 @@ class TestBlobRefcounting(VaultTestCase):
     def test_refcount_tracks_an_archive_attached_by_update(self):
         """Regression: refcount triggers covered INSERT and DELETE but not
         UPDATE.  A link item is created first and its archived copy attached
-        later by UPDATE, so the refcount stayed 0 and `vault gc` would delete
+        later by UPDATE, so the refcount stayed 0 and `db gc` would delete
         bytes that were very much in use.
         """
         blob = self._blob()
@@ -147,7 +147,7 @@ class TestBlobRefcounting(VaultTestCase):
             self.conn.execute("DELETE FROM blob WHERE id=?", (blob,))
 
 
-class TestSoftDeleteAndUniqueness(VaultTestCase):
+class TestSoftDeleteAndUniqueness(DatabaseTestCase):
 
     def test_a_trashed_url_can_be_bookmarked_again(self):
         """Regression: a global UNIQUE(url_norm) meant bookmarking a URL,
@@ -180,7 +180,7 @@ class TestSoftDeleteAndUniqueness(VaultTestCase):
                     self.conn.execute(stmt, (item,))
 
 
-class TestPropsProjection(VaultTestCase):
+class TestPropsProjection(DatabaseTestCase):
 
     def test_arrays_project_one_row_per_element(self):
         """Regression: array-valued props produced zero rows in attr_multi,
@@ -215,7 +215,7 @@ class TestPropsProjection(VaultTestCase):
         self.assertEqual(keys, ["amount"])
 
 
-class TestTagCache(VaultTestCase):
+class TestTagCache(DatabaseTestCase):
 
     def _tag(self, slug):
         self.conn.execute(
@@ -255,7 +255,7 @@ class TestTagCache(VaultTestCase):
                     "INSERT INTO tag(slug, label, created_at) VALUES (?,?,?)", (bad, bad, UTC))
 
 
-class TestValueConstraints(VaultTestCase):
+class TestValueConstraints(DatabaseTestCase):
 
     def test_uid_must_be_lowercase_hex_of_exactly_32(self):
         """Regression: the original check was `[0-9a-f]*`, and in GLOB `*`

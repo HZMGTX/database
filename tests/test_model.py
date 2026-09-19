@@ -10,12 +10,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import VaultTestCase  # noqa: E402
+from support import DatabaseTestCase  # noqa: E402
 
-from vault import ids, model  # noqa: E402
+from db import ids, model  # noqa: E402
 
 
-class TestCreate(VaultTestCase):
+class TestCreate(DatabaseTestCase):
 
     def test_create_returns_the_composed_document(self):
         doc = model.create(self.db, kind="note", title="Hello", body="World")
@@ -67,7 +67,7 @@ class TestCreate(VaultTestCase):
         self.assertEqual(doc["props"]["invented_field"], 7)
 
 
-class TestShortHandles(VaultTestCase):
+class TestShortHandles(DatabaseTestCase):
 
     def test_handles_are_distinct_for_a_burst_of_items(self):
         """Regression: short handles were the uid PREFIX, which on a UUIDv7 is
@@ -104,7 +104,7 @@ class TestShortHandles(VaultTestCase):
                          model.resolve(self.db, wanted["uid"]))
 
 
-class TestRevisionDiscipline(VaultTestCase):
+class TestRevisionDiscipline(DatabaseTestCase):
 
     def test_rev_bumps_when_only_tags_change(self):
         """The ETag is uid.rev.  If a tag edit left rev alone, a client could
@@ -144,7 +144,7 @@ class TestRevisionDiscipline(VaultTestCase):
         self.assertEqual(revs, [1, 2, 3])
 
 
-class TestFacets(VaultTestCase):
+class TestFacets(DatabaseTestCase):
 
     def test_task_due_carries_its_timezone(self):
         doc = model.create(self.db, kind="task", title="Ship",
@@ -180,7 +180,7 @@ class TestFacets(VaultTestCase):
             model.create(self.db, kind="event", title="x", facet={})
 
 
-class TestLifecycle(VaultTestCase):
+class TestLifecycle(DatabaseTestCase):
 
     def test_trashed_items_are_hidden_but_recoverable(self):
         doc = model.create(self.db, title="x")
@@ -237,7 +237,7 @@ class TestLifecycle(VaultTestCase):
         self.assert_all_integrity_clean()
 
 
-class TestEdges(VaultTestCase):
+class TestEdges(DatabaseTestCase):
 
     def test_unknown_verb_is_rejected(self):
         a, b = model.create(self.db, title="A"), model.create(self.db, title="B")

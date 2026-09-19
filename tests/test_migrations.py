@@ -6,24 +6,24 @@ import sys
 import unittest
 from pathlib import Path
 
-from support import REPO, VaultTestCase  # noqa: E402
+from support import REPO, DatabaseTestCase  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from vault import SCHEMA_VERSION                                   # noqa: E402
-from vault.db import Database                                      # noqa: E402
-from vault.migrate import (MigrationError, applied_versions,       # noqa: E402
+from db import SCHEMA_VERSION                                   # noqa: E402
+from db.db import Database                                      # noqa: E402
+from db.migrate import (MigrationError, applied_versions,       # noqa: E402
                            current_version, discover, migrate)
 
 
-class TestMigrationRunner(VaultTestCase):
+class TestMigrationRunner(DatabaseTestCase):
 
     def test_0001_applies_on_empty_db(self):
         """Regression: the audit triggers once read `FROM temp._ctx`.
 
         SQLite refuses to create such a trigger at all -- "trigger cannot
         reference objects in database temp" -- so migration 0001 aborted and
-        `vault init` never completed.  Nothing in the schema may reference the
+        `db init` never completed.  Nothing in the schema may reference the
         temp database.
         """
         self.assertEqual(current_version(self.conn), SCHEMA_VERSION)
@@ -41,7 +41,7 @@ class TestMigrationRunner(VaultTestCase):
     def test_schema_version_matches_highest_migration(self):
         """SCHEMA_VERSION and the migrations on disk must not drift.
 
-        If they do, Vault refuses to open its own freshly created database.
+        If they do, The database refuses to open its own freshly created database.
         """
         self.assertEqual(max(m.version for m in discover()), SCHEMA_VERSION)
 
@@ -65,7 +65,7 @@ class TestMigrationRunner(VaultTestCase):
             self.assertEqual(applied[m.version][1], m.checksum)
 
 
-class TestMigrationRefusals(VaultTestCase):
+class TestMigrationRefusals(DatabaseTestCase):
     """The three things the runner must refuse to do."""
 
     def _copy_migrations(self) -> Path:
@@ -97,7 +97,7 @@ class TestMigrationRefusals(VaultTestCase):
         that it really does: the table created before the bad statement must
         not survive, and user_version must not move.
         """
-        import vault.migrate as mig
+        import db.migrate as mig
 
         d = self._copy_migrations()
         (d / "0003_bad.sql").write_text(

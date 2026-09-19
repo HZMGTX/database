@@ -10,15 +10,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import VaultTestCase  # noqa: E402
+from support import DatabaseTestCase  # noqa: E402
 
-from vault import model  # noqa: E402
-from vault.httpd import Server  # noqa: E402
+from db import model  # noqa: E402
+from db.httpd import Server  # noqa: E402
 
 PORT = 8811
 
 
-class ApiTestCase(VaultTestCase):
+class ApiTestCase(DatabaseTestCase):
 
     def setUp(self):
         super().setUp()

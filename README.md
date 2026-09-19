@@ -1,12 +1,12 @@
-# Vault
+# Database
 
 A self-contained personal database. One SQLite file, three interfaces, zero
 dependencies.
 
 ```
-./vault init && ./vault demo
-./vault find budget
-./vault serve
+./db init && ./db demo
+./db find budget
+./db serve
 ```
 
 Everything you keep — notes, tasks, events, links, files, people, and any kind
@@ -22,17 +22,17 @@ kinds that did not exist when this was written.
 `npm install`, no build step, no Docker, no account, no network. It works
 offline and will still work offline in ten years.
 
-**Your data is never trapped.** `vault export` writes JSONL, Markdown, CSV,
+**Your data is never trapped.** `db export` writes JSONL, Markdown, CSV,
 a single self-contained HTML page, iCalendar and vCard. The JSONL round trip
 is tested on every run: export everything, import it into an empty database,
 compare every field. If anything were lost, that test would fail.
 
-**One file to back up.** The database is `data/vault.db`. Copy it while
-nothing is writing, or run `vault backup` at any time — that uses
+**One file to back up.** The database is `data/data.db`. Copy it while
+nothing is writing, or run `db backup` at any time — that uses
 `VACUUM INTO`, which is safe on a live database, and verifies the copy before
 recording it.
 
-**It tells you the truth.** `vault doctor` runs SQLite's integrity check, the
+**It tells you the truth.** `db doctor` runs SQLite's integrity check, the
 foreign key check, and FTS5's *content-aware* index check. Search says how it
 understood your query. A file whose contents were withheld says so.
 
@@ -41,26 +41,26 @@ understood your query. A file whose contents were withheld says so.
 ## Getting started
 
 ```sh
-./vault init          # create the database
-./vault demo          # load a few sample items to explore
-./vault find budget
+./db init          # create the database
+./db demo          # load a few sample items to explore
+./db find budget
 ```
 
 Put it on your `PATH` so it works from anywhere:
 
 ```sh
-./vault install-cli   # symlinks into ~/.local/bin
+./db install-cli   # symlinks into ~/.local/bin
 ```
 
 ### Capture
 
 ```sh
-vault add note "Q3 planning" --body "Review the budget before Friday" --tag work/finance
-vault add task "Ship the release" --due friday --priority 3
-vault add event "Standup" --starts "monday 9:30am" --location "Room 2"
-vault add link https://sqlite.org/fts5.html --title "FTS5 docs" --tag ref
-vault add person --given Ada --family Lovelace --email ada@example.com
-vault add file ~/Documents/contract.pdf --tag legal
+db add note "Q3 planning" --body "Review the budget before Friday" --tag work/finance
+db add task "Ship the release" --due friday --priority 3
+db add event "Standup" --starts "monday 9:30am" --location "Room 2"
+db add link https://sqlite.org/fts5.html --title "FTS5 docs" --tag ref
+db add person --given Ada --family Lovelace --email ada@example.com
+db add file ~/Documents/contract.pdf --tag legal
 ```
 
 Dates are read the way you write them: `friday`, `tomorrow 3pm`, `+7d`, `eod`,
@@ -69,15 +69,15 @@ Dates are read the way you write them: `friday`, `tomorrow 3pm`, `+7d`, `eod`,
 ### Find
 
 ```sh
-vault find budget
-vault find "kind:task status:todo due:<friday"
-vault find "tag:work/* amount>5000"
-vault find '"an exact phrase" -draft'
-vault today
+db find budget
+db find "kind:task status:todo due:<friday"
+db find "tag:work/* amount>5000"
+db find '"an exact phrase" -draft'
+db today
 ```
 
 > Quote any query containing `>` or `<`. Otherwise your shell treats them as
-> redirects and Vault never sees them.
+> redirects and the database never sees them.
 
 | Operator | Meaning |
 | --- | --- |
@@ -97,8 +97,8 @@ Every command takes `--json`, and exit codes mean something: `0` fine,
 ### The web UI
 
 ```sh
-vault serve            # http://127.0.0.1:8787
-vault serve --lan      # reachable from your network, with a token
+db serve            # http://127.0.0.1:8787
+db serve --lan      # reachable from your network, with a token
 ```
 
 The interface has no settings. The palette, spacing and depth are fixed:
@@ -115,19 +115,19 @@ database that is harmless on loopback is not harmless on shared wifi.
 ## Import and export
 
 ```sh
-vault import ~/notes --format md          # a folder of Markdown
-vault import bookmarks.html               # any browser's export
-vault import contacts.vcf
-vault import ~/Documents --format dir     # a folder of files
-vault import /path/to/repo --format repo  # a git repository
+db import ~/notes --format md          # a folder of Markdown
+db import bookmarks.html               # any browser's export
+db import contacts.vcf
+db import ~/Documents --format dir     # a folder of files
+db import /path/to/repo --format repo  # a git repository
 
-vault export --format jsonl --out backup.jsonl
-vault export --format html  --out vault.html   # opens with just a browser
-vault export --format md    --out ./markdown
+db export --format jsonl --out backup.jsonl
+db export --format html  --out database.html   # opens with just a browser
+db export --format md    --out ./markdown
 ```
 
-Every import is one recorded batch: `vault import list` shows them, and
-`vault import undo <batch>` reverses a thousand-file mistake in one command.
+Every import is one recorded batch: `db import list` shows them, and
+`db import undo <batch>` reverses a thousand-file mistake in one command.
 Add `--dry-run` to see exactly what would happen first.
 
 ### Indexing code
@@ -142,14 +142,14 @@ JavaScript module of game items becomes 45 queryable kinds, so
 contains a recognised token shape, or assigns a high-entropy literal to
 something named like a secret is indexed by **path and metadata only**. Its
 contents never reach the item body, the search index, the attribute
-projection, a revision snapshot or an export. `vault doctor` lists what was
+projection, a revision snapshot or an export. `db doctor` lists what was
 withheld, because being quietly protected is its own problem.
 
 ---
 
 ## Connecting to other applications
 
-Vault connects to things; it does not take them over. Two projects are wired
+the database connects to things; it does not take them over. Two projects are wired
 up, both additively — neither one's data layer was touched.
 
 ### The client modules
@@ -159,14 +159,14 @@ project, where it is the file that runs:
 
 | Project | Installed as |
 | --- | --- |
-| VYREX | `src/services/vaultService.js` |
-| genesis-ai-dev | `lib/vault-client/`, the package `@workspace/vault-client` |
+| VYREX | `src/services/remoteDbService.js` |
+| genesis-ai-dev | `lib/remote-db-client/`, the package `@workspace/remote-db-client` |
 
-They speak HTTP to a running `vault serve`, so neither project's own database
+They speak HTTP to a running `db serve`, so neither project's own database
 is involved. Nothing in either project imports its client until you add an
 import, so both are inert until you use them.
 
-Every call fails soft. Vault is a separate process somebody has to start, so
+Every call fails soft. the database is a separate process somebody has to start, so
 it will be down more often than it is up, and a sidecar must not be able to
 fail a request that was not about it — an unreachable server gives back an
 empty result rather than throwing. Pass `strict` where you would rather
@@ -177,8 +177,8 @@ See [clients/README.md](clients/README.md).
 ### Reading another application's database
 
 ```
-vault connect vyrex --db-path /path/to/vyrex.db --describe
-vault connect vyrex --db-path /path/to/vyrex.db
+db connect vyrex --db-path /path/to/vyrex.db --describe
+db connect vyrex --db-path /path/to/vyrex.db
 ```
 
 The connection is opened `mode=ro` with `query_only`, which SQLite enforces
@@ -189,30 +189,30 @@ is safe to run while the thing is live. Re-running reads only what is new.
 ## Looking after it
 
 ```sh
-vault backup                  # verified snapshot
-vault backup --bundle         # one zip: database + every attachment
-vault backups                 # what exists, and how old
-vault restore-backup <path>
+db backup                  # verified snapshot
+db backup --bundle         # one zip: database + every attachment
+db backups                 # what exists, and how old
+db restore-backup <path>
 
-vault doctor                  # every integrity check
-vault optimize --vacuum       # statistics, index compaction, reclaim space
-vault gc                      # attachments nothing references (preview first)
-vault stats
+db doctor                  # every integrity check
+db optimize --vacuum       # statistics, index compaction, reclaim space
+db gc                      # attachments nothing references (preview first)
+db stats
 
-vault sql "SELECT kind, count(*) FROM item GROUP BY kind"
+db sql "SELECT kind, count(*) FROM item GROUP BY kind"
 ```
 
-`vault sql` is read-only three times over: a `mode=ro` connection, an
+`db sql` is read-only three times over: a `mode=ro` connection, an
 authorizer that permits only reads, and a timeout that stops a runaway query.
 Ask the database anything; you cannot damage it from there.
 
 ### History
 
 ```sh
-vault history <ref>
-vault diff <ref> 1 4
-vault revert <ref> 3          # writes a NEW revision; history is append-only
-vault undo                    # reverses the last change, however many items
+db history <ref>
+db diff <ref> 1 4
+db revert <ref> 3          # writes a NEW revision; history is append-only
+db undo                    # reverses the last change, however many items
 ```
 
 `undo` is keyed by transaction, not by row, so retagging two hundred items and
@@ -271,7 +271,7 @@ FTS5's trigram tokenizer cannot match terms that short. The result says so
 when there is nothing else to narrow by.
 
 **PDF text needs `pdftotext`** on your `PATH`. Without it, PDFs are stored and
-findable by name, and `doctor` reports how many are unindexed. Vault does not
+findable by name, and `doctor` reports how many are unindexed. the database does not
 pretend to have read them.
 
 **No encryption at rest.** It is a plain SQLite file. Use disk encryption.

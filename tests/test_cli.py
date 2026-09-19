@@ -13,12 +13,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import VaultTestCase  # noqa: E402
+from support import DatabaseTestCase  # noqa: E402
 
-from vault import cli  # noqa: E402
+from db import cli  # noqa: E402
 
 
-class CliTestCase(VaultTestCase):
+class CliTestCase(DatabaseTestCase):
     """Runs commands against this test's own database."""
 
     def run_cli(self, *argv, expect=cli.EXIT_OK):
@@ -29,7 +29,7 @@ class CliTestCase(VaultTestCase):
         if expect is not None:
             self.assertEqual(
                 code, expect,
-                f"`vault {' '.join(argv)}` exited {code}, expected {expect}\n"
+                f"`db {' '.join(argv)}` exited {code}, expected {expect}\n"
                 f"stdout: {out.getvalue()}\nstderr: {err.getvalue()}")
         return code, out.getvalue(), err.getvalue()
 
@@ -46,7 +46,7 @@ class TestCapture(CliTestCase):
         self.assertEqual(payload["hits"][0]["title"], "Q3 planning")
 
     def test_title_does_not_need_quoting(self):
-        """nargs='*' means `vault add note Q3 planning` works unquoted, which
+        """nargs='*' means `db add note Q3 planning` works unquoted, which
         is what anyone types the first time."""
         self.run_cli("add", "note", "Q3", "planning", "notes")
         payload = self.run_json("find", "planning")
@@ -79,7 +79,7 @@ class TestCapture(CliTestCase):
 class TestTagging(CliTestCase):
 
     def test_removing_a_tag_is_not_read_as_an_option(self):
-        """Regression: `vault tag ref -personal` made argparse reject the
+        """Regression: `db tag ref -personal` made argparse reject the
         command as having an unrecognised option."""
         self.run_cli("add", "note", "Notes", "--tag", "work", "--tag", "personal")
         self.run_cli("tag", "Notes", "+urgent", "-personal")
@@ -103,7 +103,7 @@ class TestLifecycle(CliTestCase):
         self.run_cli("find", "Temporary")
 
     def test_purge_refuses_without_yes_when_not_a_terminal(self):
-        """A script piping into Vault must not be able to destroy data."""
+        """A script piping into The database must not be able to destroy data."""
         self.run_cli("add", "note", "Doomed")
         original, sys.stdin = sys.stdin, io.StringIO("")
         try:

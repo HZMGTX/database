@@ -17,10 +17,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import REPO, VaultTestCase  # noqa: E402
+from support import REPO, DatabaseTestCase  # noqa: E402
 
-from vault import model  # noqa: E402
-from vault.httpd import WEB_ROOT, Server  # noqa: E402
+from db import model  # noqa: E402
+from db.httpd import WEB_ROOT, Server  # noqa: E402
 
 CHROME_CANDIDATES = [
     Path("/opt/pw-browsers/chromium-1194/chrome-linux/chrome"),
@@ -37,7 +37,7 @@ def find_chrome():
     return Path(found) if found else None
 
 
-class WebTestCase(VaultTestCase):
+class WebTestCase(DatabaseTestCase):
     _port = [8840]
 
     def setUp(self):
@@ -76,7 +76,7 @@ class TestStaticServing(WebTestCase):
             with self.subTest(path=path):
                 status, _, body = self.get(path)
                 self.assertEqual(status, 200)
-                self.assertIn(b"<title>Vault</title>", body)
+                self.assertIn(b"<title>Database</title>", body)
 
     def test_a_missing_asset_is_a_404_not_the_page(self):
         """Regression: the SPA fallback answered every unknown path with

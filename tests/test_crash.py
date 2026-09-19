@@ -16,12 +16,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import REPO, VaultTestCase  # noqa: E402
+from support import REPO, DatabaseTestCase  # noqa: E402
 
-from vault import model  # noqa: E402
+from db import model  # noqa: E402
 
 
-class TestCrashSafety(VaultTestCase):
+class TestCrashSafety(DatabaseTestCase):
 
     def _kill_mid_write(self, db_path: Path) -> None:
         """Start a process writing in a loop and SIGKILL it mid-transaction.
@@ -32,9 +32,9 @@ class TestCrashSafety(VaultTestCase):
         script = textwrap.dedent(f"""
             import sys, time
             sys.path.insert(0, {str(REPO / 'src')!r})
-            from vault.db import Database
-            from vault.paths import resolve
-            from vault import model
+            from db.db import Database
+            from db.paths import resolve
+            from db import model
             db = Database(resolve({str(db_path)!r}))
             n = 0
             while True:
@@ -56,7 +56,7 @@ class TestCrashSafety(VaultTestCase):
         self._kill_mid_write(self.layout.db)
 
         # Reopen from scratch, exactly as a user would after a power cut.
-        from vault.db import Database
+        from db.db import Database
         reopened = Database(self.layout)
         try:
             conn = reopened.conn()

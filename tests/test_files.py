@@ -12,9 +12,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import VaultTestCase  # noqa: E402
+from support import DatabaseTestCase  # noqa: E402
 
-from vault import extract, files, model, search, secretscan  # noqa: E402
+from db import extract, files, model, search, secretscan  # noqa: E402
 
 LIVE_TOKEN = "MTAxNzg0NTk5MDc2NTQzMjEwOQ.GxYzAb.3f9Xk2LmQpRsTuVwXyZ01234567890abcd"
 HIGH_ENTROPY = "9f8Kx2mQzR4tY7uI0pA3sD6fG1hJ5kL8"
@@ -102,7 +102,7 @@ class TestExtraction(unittest.TestCase):
 
     def setUp(self):
         import tempfile
-        self.tmp = Path(tempfile.mkdtemp(prefix="vault-extract-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="database-extract-"))
 
     def tearDown(self):
         import shutil
@@ -169,7 +169,7 @@ class TestExtraction(unittest.TestCase):
         self.assertEqual(extract.extract_file(path).status, "empty")
 
 
-class TestAttachments(VaultTestCase):
+class TestAttachments(DatabaseTestCase):
 
     def setUp(self):
         super().setUp()

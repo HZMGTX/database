@@ -16,13 +16,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import REPO, VaultTestCase  # noqa: E402
+from support import REPO, DatabaseTestCase  # noqa: E402
 
-from vault import model  # noqa: E402
-from vault.httpd import Server  # noqa: E402
+from db import model  # noqa: E402
+from db.httpd import Server  # noqa: E402
 
 
-class TestInProcessConcurrency(VaultTestCase):
+class TestInProcessConcurrency(DatabaseTestCase):
 
     def test_many_threads_writing_at_once(self):
         """The write lock serialises this process's own threads, so they
@@ -69,12 +69,12 @@ class TestInProcessConcurrency(VaultTestCase):
         self.assertEqual(seen, [1], "the reader should have seen the pre-write snapshot")
 
 
-class TestCrossProcessConcurrency(VaultTestCase):
+class TestCrossProcessConcurrency(DatabaseTestCase):
     """A separate OS process writing while a server holds the same database."""
 
-    def _vault(self, *args):
+    def _db(self, *args):
         return subprocess.run(
-            [sys.executable, "-m", "vault", *args, "--db", str(self.layout.db)],
+            [sys.executable, "-m", "db", *args, "--db", str(self.layout.db)],
             cwd=str(REPO), env={"PYTHONPATH": str(REPO / "src"), "PATH": "/usr/bin:/bin",
                                 "NO_COLOR": "1"},
             capture_output=True, text=True, timeout=60)
@@ -84,7 +84,7 @@ class TestCrossProcessConcurrency(VaultTestCase):
                         web_root=self.layout.root / "no-web").start(background=True)
         try:
             for n in range(5):
-                result = self._vault("add", "note", f"External {n}", "--tag", "ext")
+                result = self._db("add", "note", f"External {n}", "--tag", "ext")
                 self.assertEqual(result.returncode, 0, result.stderr)
 
             with urllib.request.urlopen(
@@ -105,7 +105,7 @@ class TestCrossProcessConcurrency(VaultTestCase):
             with urllib.request.urlopen(request) as response:
                 self.assertEqual(response.status, 201)
 
-            result = self._vault("find", "Made over HTTP", "--json")
+            result = self._db("find", "Made over HTTP", "--json")
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)["hits"][0]["title"], "Made over HTTP")
         finally:
@@ -116,7 +116,7 @@ class TestCrossProcessConcurrency(VaultTestCase):
                         web_root=self.layout.root / "no-web").start(background=True)
         try:
             for n in range(3):
-                self._vault("add", "note", f"cli-{n}")
+                self._db("add", "note", f"cli-{n}")
                 request = urllib.request.Request(
                     "http://127.0.0.1:8879/api/v1/items", method="POST",
                     data=json.dumps({"kind": "note", "title": f"http-{n}"}).encode(),
@@ -124,7 +124,7 @@ class TestCrossProcessConcurrency(VaultTestCase):
                 urllib.request.urlopen(request).read()
         finally:
             server.stop()
-        result = self._vault("doctor", "--json")
+        result = self._db("doctor", "--json")
         self.assertTrue(json.loads(result.stdout)["ok"], result.stdout)
 
 

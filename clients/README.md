@@ -1,6 +1,6 @@
-# Vault clients
+# the database clients
 
-Two modules that let the projects talk to a running Vault: search what Vault
+Two modules that let the projects talk to a running the database: search what the database
 knows, and write into it.
 
 **Both are already installed.** These are the canonical copies, kept here so
@@ -9,8 +9,8 @@ project, where it is the file that actually runs.
 
 | Project | Installed as | Pull request |
 | --- | --- | --- |
-| VYREX | `src/services/vaultService.js` + `tests/vaultService.test.js` | [VYREX#27](https://github.com/HZMGTX/VYREX/pull/27) |
-| genesis-ai-dev | `lib/vault-client/` — the package `@workspace/vault-client` | [genesis-ai-dev#49](https://github.com/HZMGTX/genesis-ai-dev/pull/49) |
+| VYREX | `src/services/remoteDbService.js` + `tests/remoteDbService.test.js` | [VYREX#27](https://github.com/HZMGTX/VYREX/pull/27) |
+| genesis-ai-dev | `lib/remote-db-client/` — the package `@workspace/remote-db-client` | [genesis-ai-dev#49](https://github.com/HZMGTX/genesis-ai-dev/pull/49) |
 
 Neither project imports its client until you add an import, so both are inert
 until you use them.
@@ -23,22 +23,22 @@ worse than a copied one.
 
 ```
 cd /path/to/database
-./vault serve
+./db serve
 ```
 
-That binds `127.0.0.1:8787`. Set `VAULT_URL` if you move it and `VAULT_TOKEN`
+That binds `127.0.0.1:8787`. Set `DB_URL` if you move it and `DB_TOKEN`
 if you started it with `--token` or `--lan`.
 
 ## VYREX
 
 ```js
-const vault = require('./services/vaultService');
+const database = require('./services/remoteDbService');
 
-if (!await vault.available()) return interaction.reply('Vault is not running.');
+if (!await database.available()) return interaction.reply('the database is not running.');
 
-const hits = await vault.search('kind:task status:todo tag:support');
+const hits = await database.search('kind:task status:todo tag:support');
 
-await vault.capture({
+await database.capture({
   title: `Ticket #${ticket.id} escalated`,
   body: ticket.summary,
   kind: 'task',
@@ -51,7 +51,7 @@ await vault.capture({
 ## genesis-ai-dev
 
 ```ts
-import { search, capture, available, renderSnippet } from "@workspace/vault-client";
+import { search, capture, available, renderSnippet } from "@workspace/remote-db-client";
 
 if (await available()) {
   const page = await search("kind:note tag:design", { limit: 10 });
@@ -60,11 +60,11 @@ if (await available()) {
 
 ## Both
 
-Every call **fails soft**: an unreachable or slow Vault gives back an empty
-result rather than throwing, because Vault is a separate process somebody has
+Every call **fails soft**: an unreachable or slow the database gives back an empty
+result rather than throwing, because the database is a separate process somebody has
 to start and a sidecar must not be able to fail a request that was not about
 it. Pass `strict` where you would rather handle the error — you get the HTTP
-status and the RFC 9457 problem document Vault returned.
+status and the RFC 9457 problem document the database returned.
 
 A hit's `snippet` wraps each match in **STX and ETX**, not in markup, so that
 each caller picks its own rendering. Printing one unprocessed puts two
@@ -82,11 +82,11 @@ see that `duw:friday` was read as a property nobody has rather than as a date.
 
 ## Reading VYREX's own database
 
-Separate from the clients, Vault can read the bot's SQLite store directly:
+Separate from the clients, the database can read the bot's SQLite store directly:
 
 ```
-./vault connect vyrex --db-path /path/to/vyrex.db --describe
-./vault connect vyrex --db-path /path/to/vyrex.db
+./db connect vyrex --db-path /path/to/vyrex.db --describe
+./db connect vyrex --db-path /path/to/vyrex.db
 ```
 
 Opened `mode=ro` with `query_only`, which SQLite enforces itself — this cannot

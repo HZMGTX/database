@@ -6,12 +6,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import VaultTestCase  # noqa: E402
+from support import DatabaseTestCase  # noqa: E402
 
-from vault import history, model  # noqa: E402
+from db import history, model  # noqa: E402
 
 
-class TestRevisions(VaultTestCase):
+class TestRevisions(DatabaseTestCase):
 
     def _three_revisions(self):
         doc = model.create(self.db, title="Draft", body="first", tags=["work"])
@@ -53,7 +53,7 @@ class TestRevisions(VaultTestCase):
         self.assertEqual(op, "revert")
 
 
-class TestUndo(VaultTestCase):
+class TestUndo(DatabaseTestCase):
 
     def test_undo_reverses_a_bulk_change_as_one_operation(self):
         """The reason change_log is keyed by transaction rather than by row.
@@ -134,7 +134,7 @@ class TestUndo(VaultTestCase):
         self.assert_all_integrity_clean()
 
 
-class TestCompaction(VaultTestCase):
+class TestCompaction(DatabaseTestCase):
 
     def test_compaction_is_dry_run_unless_asked(self):
         """Losing history silently is worse than a large database."""

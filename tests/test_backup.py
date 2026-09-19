@@ -8,12 +8,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import VaultTestCase  # noqa: E402
+from support import DatabaseTestCase  # noqa: E402
 
-from vault import backup, files, model, sqlsh  # noqa: E402
+from db import backup, files, model, sqlsh  # noqa: E402
 
 
-class TestBackups(VaultTestCase):
+class TestBackups(DatabaseTestCase):
 
     def setUp(self):
         super().setUp()
@@ -28,7 +28,7 @@ class TestBackups(VaultTestCase):
         self.assertIn("10 items", result.note)
 
     def test_a_corrupt_file_fails_verification(self):
-        bad = self.layout.backups / "vault-20200101T000000Z.db"
+        bad = self.layout.backups / "database-20200101T000000Z.db"
         bad.parent.mkdir(parents=True, exist_ok=True)
         bad.write_bytes(b"SQLite format 3\x00" + b"\x00" * 900)
         verified, _ = backup._verify(bad)
@@ -58,13 +58,13 @@ class TestBackups(VaultTestCase):
             "20260820T100000Z", "20260720T100000Z",
         ]
         for stamp in stamps:
-            (self.layout.backups / f"vault-{stamp}.db").write_bytes(b"x")
+            (self.layout.backups / f"database-{stamp}.db").write_bytes(b"x")
         result = backup.prune(self.db, keep_daily=2, keep_weekly=1, keep_monthly=2,
                               dry_run=True)
         self.assertTrue(result["removed"])
         self.assertTrue(result["kept"])
         # Nothing actually deleted in a dry run.
-        self.assertEqual(len(list(self.layout.backups.glob("vault-*.db"))), len(stamps))
+        self.assertEqual(len(list(self.layout.backups.glob("database-*.db"))), len(stamps))
 
     def test_a_bundle_carries_the_attachments_too(self):
         """A database without its attachments restores to file items
@@ -76,7 +76,7 @@ class TestBackups(VaultTestCase):
         target = backup.bundle(self.db, self._tmp / "bundle.zip")
         with zipfile.ZipFile(target) as archive:
             names = archive.namelist()
-        self.assertIn("vault.db", names)
+        self.assertIn("db.db", names)
         self.assertIn("RESTORE.txt", names)
         self.assertTrue(any(n.startswith("files/") for n in names))
 
@@ -92,7 +92,7 @@ class TestBackups(VaultTestCase):
         self.assertFalse(preview["confirmed"])
 
 
-class TestSqlSandbox(VaultTestCase):
+class TestSqlSandbox(DatabaseTestCase):
 
     def setUp(self):
         super().setUp()

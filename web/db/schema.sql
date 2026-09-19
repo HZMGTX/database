@@ -240,85 +240,85 @@ CREATE TABLE IF NOT EXISTS import_progress (
 );
 
 -- ---------------------------------------------------------------------------
--- Backfill and reconcile
+-- Reconcile
 --
--- Runs every time the schema is applied. The backfill only ever fills blanks,
--- so a row filed by hand is never overwritten by the tag it happens to carry.
+-- Files anything unfiled and rebuilds the derived counts.
+--
+-- A function rather than loose statements because it has two callers that
+-- must not disagree: applying the schema, and finishing an import. The
+-- importer files each row from its `repo/<x>` tag as it goes, which leaves
+-- behind every row that names its project some other way -- so without this
+-- running afterwards, a fresh import ends with a couple of hundred rows
+-- sitting in Unfiled that plainly belong somewhere.
 -- ---------------------------------------------------------------------------
 
--- Rows imported before `project` existed carry their origin as a `repo/<x>`
--- tag. That is where the grouping already lived, so that is where it comes
--- from -- nobody should have to re-file 54,000 rows by hand.
--- `FROM unnest(i.tags)` cannot be used here: an UPDATE may not re-reference
--- its own target table in the FROM clause, and Postgres rejects it with
--- "invalid reference to FROM-clause entry for table i". A correlated
--- subquery reads the row's own array instead, and the EXISTS guard keeps
--- this from rewriting every unfiled row on each apply.
-UPDATE item
-   SET project = (
-         SELECT substring(t FROM 6)
-           FROM unnest(tags) AS t
-          WHERE t LIKE 'repo/%'
-            AND substring(t FROM 6) ~ '^[a-z0-9][a-z0-9_-]{0,48}$'
-          ORDER BY t
-          LIMIT 1)
- WHERE project = ''
-   AND EXISTS (
-         SELECT 1
-           FROM unnest(tags) AS t
-          WHERE t LIKE 'repo/%'
-            AND substring(t FROM 6) ~ '^[a-z0-9][a-z0-9_-]{0,48}$');
+CREATE OR REPLACE FUNCTION reconcile_projects() RETURNS void
+LANGUAGE plpgsql AS $$
+BEGIN
+  -- Pass one: the repository indexer's tag. `FROM unnest(i.tags)` cannot be
+  -- used here -- an UPDATE may not re-reference its own target in the FROM
+  -- clause -- so the row reads its own array through a correlated subquery.
+  UPDATE item
+     SET project = (
+           SELECT substring(t FROM 6)
+             FROM unnest(tags) AS t
+            WHERE t LIKE 'repo/%'
+              AND substring(t FROM 6) ~ '^[a-z0-9][a-z0-9_-]{0,48}$'
+            ORDER BY t
+            LIMIT 1)
+   WHERE project = ''
+     AND EXISTS (
+           SELECT 1 FROM unnest(tags) AS t
+            WHERE t LIKE 'repo/%'
+              AND substring(t FROM 6) ~ '^[a-z0-9][a-z0-9_-]{0,48}$');
 
--- Known projects get a real name and a colour first, so the derived title
--- case below does not leave "Vyrex" and "Genesis Ai Dev" sitting in the
--- interface. Anything else gets a reasonable guess that can be edited.
--- DO NOTHING would be wrong on a re-apply: the derived insert below may
--- already have written "Vyrex", and DO NOTHING would keep it forever. The
--- WHERE is what makes this safe -- it only replaces a label that is still
--- exactly the auto-derived guess, so a name you edited is never overwritten.
-INSERT INTO project (slug, label, colour, sort_order) VALUES
-  ('vyrex',          'VYREX',          '#00f8ff', 10),
-  ('genesis-ai-dev', 'Genesis AI Dev', '#ba00ff', 20)
-ON CONFLICT (slug) DO UPDATE
-   SET label      = EXCLUDED.label,
-       colour     = COALESCE(project.colour, EXCLUDED.colour),
-       sort_order = EXCLUDED.sort_order
- WHERE project.label = initcap(replace(project.slug, '-', ' '));
+  -- Known projects get a real name and colour. The WHERE is what makes this
+  -- safe to re-run: it only replaces a label still equal to the auto-derived
+  -- guess, so a name edited by hand is never overwritten.
+  INSERT INTO project (slug, label, colour, sort_order) VALUES
+    ('vyrex',          'VYREX',          '#00f8ff', 10),
+    ('genesis-ai-dev', 'Genesis AI Dev', '#ba00ff', 20)
+  ON CONFLICT (slug) DO UPDATE
+     SET label      = EXCLUDED.label,
+         colour     = COALESCE(project.colour, EXCLUDED.colour),
+         sort_order = EXCLUDED.sort_order
+   WHERE project.label = initcap(replace(project.slug, '-', ' '));
 
-INSERT INTO project (slug, label)
-SELECT DISTINCT i.project, initcap(replace(i.project, '-', ' '))
-  FROM item i
- WHERE i.project <> ''
-ON CONFLICT (slug) DO NOTHING;
+  INSERT INTO project (slug, label)
+  SELECT DISTINCT i.project, initcap(replace(i.project, '-', ' '))
+    FROM item i
+   WHERE i.project <> ''
+  ON CONFLICT (slug) DO NOTHING;
 
--- A second pass for rows that name their project some other way. Data read
--- out of another application's own database arrives tagged `vyrex` and
--- `vyrex/warnings`, never `repo/vyrex`, so the pass above leaves it unfiled.
---
--- The match is against project slugs that ALREADY EXIST, not against any
--- tag root, which is the whole point: `vyrex` is a project because a repo
--- tag established it above, while `data/fish` and `lang/js` are just tags
--- and must not become projects of their own.
-UPDATE item
-   SET project = (
-         SELECT p.slug
-           FROM project p
-          WHERE p.slug = ANY(ARRAY(SELECT split_part(t, '/', 1) FROM unnest(tags) t))
-          ORDER BY p.sort_order, p.slug
-          LIMIT 1)
- WHERE project = ''
-   AND EXISTS (
-         SELECT 1
-           FROM project p
-          WHERE p.slug = ANY(ARRAY(SELECT split_part(t, '/', 1) FROM unnest(tags) t)));
+  -- Pass two: rows that name their project some other way. Data read out of
+  -- another application's own database arrives tagged `vyrex` and
+  -- `vyrex/warnings`, never `repo/vyrex`.
+  --
+  -- The match is against project slugs that ALREADY EXIST, which is the
+  -- whole point: `vyrex` is a project because pass one established it, while
+  -- `data/fish` and `lang/js` are just tags and must not become projects.
+  UPDATE item
+     SET project = (
+           SELECT p.slug FROM project p
+            WHERE p.slug = ANY(ARRAY(SELECT split_part(t, '/', 1) FROM unnest(tags) t))
+            ORDER BY p.sort_order, p.slug
+            LIMIT 1)
+   WHERE project = ''
+     AND EXISTS (
+           SELECT 1 FROM project p
+            WHERE p.slug = ANY(ARRAY(SELECT split_part(t, '/', 1) FROM unnest(tags) t)));
 
--- The counts are derived, so they are rebuilt rather than trusted: a bulk
--- import or a backfill like the one above moves rows without the per-row
--- trigger ever seeing the final state.
-TRUNCATE kind_count;
-INSERT INTO kind_count (kind, n)
-SELECT kind, count(*) FROM item WHERE deleted_at IS NULL GROUP BY kind;
+  -- The counts are derived, so they are rebuilt rather than trusted: a bulk
+  -- import or the passes above move rows the per-row trigger never sees in
+  -- their final state.
+  TRUNCATE kind_count;
+  INSERT INTO kind_count (kind, n)
+  SELECT kind, count(*) FROM item WHERE deleted_at IS NULL GROUP BY kind;
 
-TRUNCATE project_count;
-INSERT INTO project_count (project, n)
-SELECT project, count(*) FROM item WHERE deleted_at IS NULL GROUP BY project;
+  TRUNCATE project_count;
+  INSERT INTO project_count (project, n)
+  SELECT project, count(*) FROM item WHERE deleted_at IS NULL GROUP BY project;
+END;
+$$;
+
+SELECT reconcile_projects();

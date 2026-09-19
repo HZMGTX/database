@@ -1,28 +1,28 @@
-# Getting your data out without Vault
+# Getting your data out without the database
 
-This page assumes the worst: Vault will not start, or you no longer have it,
+This page assumes the worst: the database will not start, or you no longer have it,
 or it is 2036 and Python 3 is a curiosity. Your data is fine. Here is how to
 reach it.
 
 ## What you have
 
-One file: `data/vault.db`. It is an ordinary SQLite database — the most widely
+One file: `data/data.db`. It is an ordinary SQLite database — the most widely
 deployed database format in existence, with readers in every language, a
 published file format, and a stated commitment to support it until 2050.
 
 Attachments are beside it in `data/files/`, laid out as
 `ab/cd/<sha256><ext>`, where `ab` and `cd` are the first four characters of
 the digest. Every file is stored under its own SHA-256, so you can verify any
-of them and identify duplicates without Vault.
+of them and identify duplicates without the database.
 
 ## Getting everything out, right now
 
-If Vault runs at all, this is the shortest path:
+If the database runs at all, this is the shortest path:
 
 ```sh
-./vault export --format jsonl --out everything.jsonl   # lossless
-./vault export --format md --out ./markdown            # readable anywhere
-./vault backup --bundle --out vault-bundle.zip         # database + attachments
+./db export --format jsonl --out everything.jsonl   # lossless
+./db export --format md --out ./markdown            # readable anywhere
+./db backup --bundle --out database-bundle.zip         # database + attachments
 ```
 
 If it does not run, everything below works without it.
@@ -30,7 +30,7 @@ If it does not run, everything below works without it.
 ## With the sqlite3 command line
 
 ```sh
-sqlite3 data/vault.db
+sqlite3 data/data.db
 
 .headers on
 .mode csv
@@ -46,7 +46,7 @@ SELECT uid, kind, title, body, tags_cache, created_at, updated_at FROM item
 ```python
 import sqlite3, json
 
-conn = sqlite3.connect("data/vault.db")
+conn = sqlite3.connect("data/data.db")
 conn.row_factory = sqlite3.Row
 
 with open("everything.jsonl", "w", encoding="utf-8") as out:
@@ -97,8 +97,8 @@ print(json.loads(zlib.decompress(blob).decode("utf-8")))
 ## Checking the file is sound
 
 ```sh
-sqlite3 data/vault.db "PRAGMA integrity_check;"      # expect: ok
-sqlite3 data/vault.db "PRAGMA foreign_key_check;"    # expect: nothing
+sqlite3 data/data.db "PRAGMA integrity_check;"      # expect: ok
+sqlite3 data/data.db "PRAGMA foreign_key_check;"    # expect: nothing
 ```
 
 If the first says anything other than `ok`, use a backup from
@@ -106,13 +106,13 @@ If the first says anything other than `ok`, use a backup from
 
 ## If the file will not open at all
 
-1. Look for `data/vault.db-wal`. If it is there, the last writes are in it.
-   Copying `vault.db` **without** the `-wal` file loses them — copy both, or
+1. Look for `data/data.db-wal`. If it is there, the last writes are in it.
+   Copying `data.db` **without** the `-wal` file loses them — copy both, or
    let any SQLite tool open the database once, which folds the log back in.
 2. Try `data/backups/`, newest first. They are ordinary databases.
 3. Recover what is readable:
    ```sh
-   sqlite3 data/vault.db ".recover" | sqlite3 recovered.db
+   sqlite3 data/data.db ".recover" | sqlite3 recovered.db
    ```
 4. The attachments in `data/files/` are just files. Their names are their
    SHA-256 digests, so they are readable and verifiable with no database at

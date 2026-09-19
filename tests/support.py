@@ -1,4 +1,4 @@
-"""Shared helpers for Vault's tests.
+"""Shared helpers for The database's tests.
 
 Tests use unittest from the standard library rather than pytest: the whole
 point of this project is that it runs with nothing installed, and a test suite
@@ -15,21 +15,21 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
-from vault.db import Database          # noqa: E402
-from vault.migrate import migrate      # noqa: E402
-from vault.paths import resolve        # noqa: E402
+from db.db import Database          # noqa: E402
+from db.migrate import migrate      # noqa: E402
+from db.paths import resolve        # noqa: E402
 
 UTC = "2026-01-01T00:00:00Z"
 
 
-class VaultTestCase(unittest.TestCase):
+class DatabaseTestCase(unittest.TestCase):
     """A fresh, fully migrated database per test, in a temp directory."""
 
     migrate_db = True
 
     def setUp(self) -> None:
-        self._tmp = Path(tempfile.mkdtemp(prefix="vault-test-"))
-        self.layout = resolve(self._tmp / "vault.db")
+        self._tmp = Path(tempfile.mkdtemp(prefix="database-test-"))
+        self.layout = resolve(self._tmp / "db.db")
         self.layout.ensure()
         self.db = Database(self.layout)
         if self.migrate_db:
@@ -52,7 +52,7 @@ class VaultTestCase(unittest.TestCase):
         Schema tests want to prove the *database* enforces something, so they
         must not go through the layer that also enforces it.
         """
-        from vault import ids
+        from db import ids
         # `is None`, not `or`: an empty-string uid is a value a test may want
         # to prove the schema rejects, and `or` would quietly replace it with
         # a valid one and make the assertion pass for the wrong reason.
@@ -66,7 +66,7 @@ class VaultTestCase(unittest.TestCase):
         return cur.lastrowid
 
     def assert_all_integrity_clean(self):
-        """Every integrity check Vault knows how to run, all of them."""
+        """Every integrity check The database knows how to run, all of them."""
         self.assertEqual(self.conn.execute("PRAGMA integrity_check").fetchone()[0], "ok")
         self.assertEqual(self.conn.execute("PRAGMA foreign_key_check").fetchall(), [])
         for fts in ("item_fts", "item_trgm"):

@@ -16,17 +16,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import VaultTestCase  # noqa: E402
+from support import DatabaseTestCase  # noqa: E402
 
-from vault import search  # noqa: E402
-from vault.connectors import vyrex  # noqa: E402
-from vault.db import connect_readonly  # noqa: E402
+from db import search  # noqa: E402
+from db.connectors import vyrex  # noqa: E402
+from db.db import connect_readonly  # noqa: E402
 
 SCHEMA_JS = Path("/home/user/vyrex/src/database/applySchema.js")
 
 
 @unittest.skipUnless(SCHEMA_JS.is_file(), "VYREX checkout not present")
-class TestVyrexConnector(VaultTestCase):
+class TestVyrexConnector(DatabaseTestCase):
 
     def setUp(self):
         super().setUp()
@@ -86,7 +86,7 @@ class TestVyrexConnector(VaultTestCase):
 
     def test_the_source_is_opened_read_only(self):
         """The guarantee the whole connector rests on. SQLite enforces this,
-        so a bug in Vault cannot corrupt a live bot's data."""
+        so a bug in The database cannot corrupt a live bot's data."""
         reader = connect_readonly(self.source)
         try:
             for statement in ("INSERT INTO bounties DEFAULT VALUES",
@@ -132,7 +132,7 @@ class TestVyrexConnector(VaultTestCase):
             vyrex.connect(self.db, self._tmp / "not-there.db")
         self.assertIn("gitignored", str(ctx.exception))
 
-    def test_vault_stays_sound_after_ingest(self):
+    def test_the_database_stays_sound_after_ingest(self):
         vyrex.connect(self.db, self.source)
         self.assert_all_integrity_clean()
 
@@ -151,8 +151,8 @@ class TestClientModulesExist(unittest.TestCase):
 
     # Installed path in the project, and the canonical copy here.
     CLIENTS = {
-        "vyrex/vaultService.js": "src/services/vaultService.js",
-        "genesis/src/index.ts": "lib/vault-client/src/index.ts",
+        "vyrex/remoteDbService.js": "src/services/remoteDbService.js",
+        "remote-db-client/src/index.ts": "lib/remote-db-client/src/index.ts",
     }
 
     def test_both_clients_are_present(self):
@@ -160,16 +160,16 @@ class TestClientModulesExist(unittest.TestCase):
             with self.subTest(client=name):
                 self.assertTrue((self.ROOT / name).is_file(), name)
         self.assertTrue((self.ROOT / "README.md").is_file())
-        self.assertTrue((self.ROOT / "vyrex" / "vaultService.test.js").is_file())
+        self.assertTrue((self.ROOT / "vyrex" / "remoteDbService.test.js").is_file())
         # The genesis copy is a whole workspace package, not a loose file.
         for name in ("package.json", "tsconfig.json", "README.md"):
-            self.assertTrue((self.ROOT / "genesis" / name).is_file(), name)
+            self.assertTrue((self.ROOT / "remote-db-client" / name).is_file(), name)
 
     def test_the_genesis_package_uses_the_monorepo_scope(self):
         """@genesis/ was wrong: that monorepo scopes its packages @workspace/,
         and an import under the wrong scope does not resolve at all."""
-        manifest = json.loads((self.ROOT / "genesis" / "package.json").read_text())
-        self.assertEqual(manifest["name"], "@workspace/vault-client")
+        manifest = json.loads((self.ROOT / "remote-db-client" / "package.json").read_text())
+        self.assertEqual(manifest["name"], "@workspace/remote-db-client")
         self.assertEqual(manifest["exports"]["."], "./src/index.ts")
 
     def test_clients_fail_soft_rather_than_throwing(self):
@@ -205,7 +205,7 @@ class TestClientModulesExist(unittest.TestCase):
         if node is None:
             self.skipTest("node is not installed")
         result = subprocess.run(
-            [node, "--check", str(self.ROOT / "vyrex" / "vaultService.js")],
+            [node, "--check", str(self.ROOT / "vyrex" / "remoteDbService.js")],
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 

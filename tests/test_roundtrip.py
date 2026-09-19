@@ -11,17 +11,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import VaultTestCase  # noqa: E402
+from support import DatabaseTestCase  # noqa: E402
 
-from vault import diffdb, files, model  # noqa: E402
-from vault.db import Database  # noqa: E402
-from vault.exporters import jsonl as export_jsonl  # noqa: E402
-from vault.importers import jsonl as import_jsonl  # noqa: E402
-from vault.migrate import migrate  # noqa: E402
-from vault.paths import resolve  # noqa: E402
+from db import diffdb, files, model  # noqa: E402
+from db.db import Database  # noqa: E402
+from db.exporters import jsonl as export_jsonl  # noqa: E402
+from db.importers import jsonl as import_jsonl  # noqa: E402
+from db.migrate import migrate  # noqa: E402
+from db.paths import resolve  # noqa: E402
 
 
-class TestJsonlRoundTrip(VaultTestCase):
+class TestJsonlRoundTrip(DatabaseTestCase):
 
     def _populate(self):
         """One of everything, including the awkward cases."""
@@ -141,7 +141,7 @@ class TestJsonlRoundTrip(VaultTestCase):
             other.close()
 
 
-class TestDiffDbItself(VaultTestCase):
+class TestDiffDbItself(DatabaseTestCase):
     """The comparison has to be able to fail, or the round-trip test is theatre."""
 
     def test_a_missing_item_is_detected(self):

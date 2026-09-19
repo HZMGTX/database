@@ -15,14 +15,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from support import REPO, VaultTestCase  # noqa: E402
+from support import REPO, DatabaseTestCase  # noqa: E402
 
-from vault import files, model  # noqa: E402
-from vault.cli import build_parser  # noqa: E402
+from db import files, model  # noqa: E402
+from db.cli import build_parser  # noqa: E402
 
 
-class TestRecoveryInstructions(VaultTestCase):
-    """RECOVERY.md promises the data is reachable without Vault."""
+class TestRecoveryInstructions(DatabaseTestCase):
+    """RECOVERY.md promises the data is reachable without The database."""
 
     def setUp(self):
         super().setUp()
@@ -118,10 +118,10 @@ class TestReadmeClaims(unittest.TestCase):
         self.assertGreater(len(self.readme), 3000)
         self.assertGreater(len(self.recovery), 2000)
 
-    def test_every_vault_command_the_readme_shows_is_real(self):
+    def test_every_command_the_readme_shows_is_real(self):
         """A README that documents a command which does not exist is worse
         than one that documents nothing."""
-        shown = set(re.findall(r"^\s*(?:\./)?vault ([a-z][a-z-]*)",
+        shown = set(re.findall(r"^\s*(?:\./)?db ([a-z][a-z-]*)",
                                self.readme, re.M))
         unknown = sorted(shown - self.commands - {"add"})
         self.assertEqual(unknown, [], f"README shows commands that do not exist: {unknown}")
@@ -133,7 +133,7 @@ class TestReadmeClaims(unittest.TestCase):
                 self.assertIn(claim, self.readme)
 
     def test_the_readme_warns_about_shell_redirection(self):
-        """`vault find amount>5000` silently creates a file called 5000."""
+        """`db find amount>5000` silently creates a file called 5000."""
         self.assertIn("redirect", self.readme)
 
 
