@@ -20,8 +20,8 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
-from vault import (SCHEMA_VERSION, __version__, backup, dates, files, history,
-                   ids, model, search, sqlsh)
+from vault import (SCHEMA_VERSION, __version__, backup, dates, diffdb, files,
+                   history, ids, model, search, sqlsh)
 from vault.db import Database, sqlite_capabilities
 from vault.migrate import MigrationError, migrate
 from vault.paths import DB_ENV_VAR, Layout, resolve
@@ -934,6 +934,170 @@ def cmd_compact_history(args) -> int:
     return EXIT_OK
 
 
+def cmd_export(args) -> int:
+    from pathlib import Path as _Path
+    from vault import exporters
+
+    db = _open_db(args)
+    fmt = args.format
+    handler = exporters.FORMATS.get(fmt)
+    if handler is None:
+        _err(f"unknown format {fmt!r}. Try: {', '.join(sorted(set(exporters.FORMATS)))}")
+        db.close()
+        return EXIT_USAGE
+
+    directory_formats = {"md", "markdown"}
+    query = " ".join(args.query) if args.query else None
+
+    if fmt in directory_formats or (fmt == "csv" and args.out and
+                                    not str(args.out).endswith(".csv")):
+        if not args.out:
+            _err(f"{fmt} export writes several files; pass --out DIRECTORY")
+            db.close()
+            return EXIT_USAGE
+        count = handler(db, None, root=_Path(args.out), query=query,
+                        include_trashed=args.trashed)
+        target = str(args.out)
+    elif args.out:
+        with open(args.out, "w", encoding="utf-8", newline="") as handle:
+            count = handler(db, handle, query=query, include_trashed=args.trashed,
+                            title=args.title or "Vault")
+        target = str(args.out)
+    else:
+        count = handler(sys.stdout, ) if False else handler(
+            db, sys.stdout, query=query, include_trashed=args.trashed,
+            title=args.title or "Vault")
+        target = "(stdout)"
+
+    if args.json:
+        _emit_json({"format": fmt, "items": count, "out": target})
+    elif args.out:
+        _out(f"{STYLE.green('Exported')} {count:,} item(s) as {fmt} to {target}")
+        if fmt == "jsonl":
+            _out(STYLE.dim("  this is the lossless format; `vault import` reads it back"))
+        elif fmt == "html":
+            _out(STYLE.dim("  a single file with a working search box; needs only a browser"))
+    db.close()
+    return EXIT_OK
+
+
+def cmd_import(args) -> int:
+    from vault import importers
+
+    db = _open_db(args)
+    fmt = args.format or _guess_format(args.path)
+    handler = importers.FORMATS.get(fmt)
+    if handler is None:
+        _err(f"unknown format {fmt!r}. Try: {', '.join(sorted(set(importers.FORMATS)))}")
+        db.close()
+        return EXIT_USAGE
+
+    mapping = {}
+    for pair in args.map or []:
+        if "=" in pair:
+            column, _, field = pair.partition("=")
+            mapping[column.strip()] = field.strip()
+
+    try:
+        result = handler(db, args.path, dry_run=args.dry_run, tags=args.tag or [],
+                         mapping=mapping)
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        _err(str(exc)); db.close(); return EXIT_NOT_FOUND
+    except Exception as exc:                                # noqa: BLE001
+        _err(f"import failed: {exc}"); db.close(); return EXIT_INTEGRITY
+
+    if args.json:
+        _emit_json(result._asdict())
+    else:
+        verb = "Would import" if result.dry_run else "Imported"
+        _out(f"{STYLE.green(verb)} from {args.path} as {fmt}")
+        _out(f"  {result.created:,} created, {result.updated:,} updated, "
+             f"{result.skipped:,} skipped, {result.withheld:,} withheld")
+        if result.withheld:
+            _out(STYLE.yellow(f"  {result.withheld} file(s) looked like credentials; "
+                              f"their contents were not stored"))
+        for entry in result.preview[:8]:
+            _out(STYLE.dim(f"    {entry['action']:9} {entry['title'][:56]}"))
+        for error in result.errors[:5]:
+            _out(STYLE.red(f"    {error[:100]}"))
+        if result.dry_run:
+            _out(STYLE.dim("  nothing was written; drop --dry-run to do it"))
+        elif result.batch_uid:
+            _out(STYLE.dim(f"  undo all of this with: "
+                           f"vault import undo {result.batch_uid[:12]}"))
+    db.close()
+    return EXIT_OK
+
+
+def cmd_import_list(args) -> int:
+    from vault.importers import batch as batch_mod
+    db = _open_db(args)
+    entries = batch_mod.listing(db, limit=args.limit)
+    if args.json:
+        _emit_json(entries)
+    elif not entries:
+        _out(STYLE.dim("No imports recorded."))
+    else:
+        for entry in entries:
+            _out(f"  {STYLE.dim(entry['uid'][:12])}  {entry['at']}  {entry['status']:8} "
+                 f"{entry['format']:10} +{entry['created']:<6} {entry['source'][:44]}")
+    db.close()
+    return EXIT_OK
+
+
+def cmd_import_undo(args) -> int:
+    from vault.importers import batch as batch_mod
+    db = _open_db(args)
+    conn = db.conn()
+    row = conn.execute(
+        "SELECT uid FROM import_batch WHERE uid LIKE ?", (args.batch + "%",)).fetchone()
+    if row is None:
+        _err(f"no import batch starting {args.batch!r}"); db.close(); return EXIT_NOT_FOUND
+    try:
+        result = batch_mod.undo(db, row[0])
+    except model.ItemNotFound as exc:
+        _err(str(exc)); db.close(); return EXIT_NOT_FOUND
+    _emit_json(result) if args.json else _out(
+        f"{STYLE.green('Undone')} {result['trashed']:,} item(s) moved to the trash\n"
+        f"{STYLE.dim('  they are recoverable; `vault trash --empty` removes them for good')}")
+    db.close()
+    return EXIT_OK
+
+
+def cmd_diff_db(args) -> int:
+    try:
+        result = diffdb.compare(args.left, args.right)
+    except (FileNotFoundError, OSError) as exc:
+        _err(str(exc))
+        return EXIT_NOT_FOUND
+    if args.json:
+        _emit_json(result)
+    elif result["identical"]:
+        _out(STYLE.green(f"  Identical: {result['left_items']:,} items, "
+                         f"every field matches."))
+    else:
+        _out(STYLE.red("  They differ."))
+        _out(f"  left {result['left_items']:,} items, right {result['right_items']:,}")
+        for uid in result["only_in_left"][:10]:
+            _out(STYLE.red(f"    only in left:  {ids.short(uid)}"))
+        for uid in result["only_in_right"][:10]:
+            _out(STYLE.red(f"    only in right: {ids.short(uid)}"))
+        for entry in result["differences"][:10]:
+            _out(STYLE.yellow(f"    {ids.short(entry['uid'])} {entry['title'][:40]}: "
+                              f"{', '.join(entry['fields'])}"))
+    return EXIT_OK if result["identical"] else EXIT_INTEGRITY
+
+
+def _guess_format(path: str) -> str:
+    from pathlib import Path as _Path
+    p = _Path(path)
+    if p.is_dir():
+        return "repo" if (p / ".git").exists() else "dir"
+    return {".jsonl": "jsonl", ".json": "jsonl", ".md": "markdown", ".csv": "csv",
+            ".ics": "ics", ".vcf": "vcf", ".html": "bookmarks",
+            ".htm": "bookmarks"}.get(p.suffix.lower(), "jsonl")
+
+
 def cmd_backup(args) -> int:
     db = _open_db(args)
     if args.bundle:
@@ -1155,11 +1319,25 @@ def cmd_demo(args) -> int:
 # argument parsing
 # ---------------------------------------------------------------------------
 
-def _add_common(parser: argparse.ArgumentParser) -> None:
+def _add_common(parser: argparse.ArgumentParser, *, top_level: bool = False) -> None:
+    """The options every command accepts, before or after the command name.
+
+    On a subparser these default to SUPPRESS rather than to a value. argparse
+    applies a subparser's defaults *after* the parent has parsed, so a plain
+    default=None here would overwrite a --db given before the command name --
+    silently sending the whole operation to the wrong database. Verified: it
+    did exactly that.
+    """
+    suppress = argparse.SUPPRESS
     parser.add_argument("--db", metavar="PATH",
+                        default=None if top_level else suppress,
                         help=f"database file (default: <repo>/data/vault.db, or ${DB_ENV_VAR})")
-    parser.add_argument("--json", action="store_true", help="machine-readable output")
-    parser.add_argument("--tz", metavar="ZONE", help="IANA zone for times you type")
+    parser.add_argument("--json", action="store_true",
+                        default=False if top_level else suppress,
+                        help="machine-readable output")
+    parser.add_argument("--tz", metavar="ZONE",
+                        default=None if top_level else suppress,
+                        help="IANA zone for times you type")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1170,7 +1348,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--version", action="version",
                         version=f"vault {__version__} (schema v{SCHEMA_VERSION})")
-    _add_common(parser)
+    _add_common(parser, top_level=True)
     sub = parser.add_subparsers(dest="command", metavar="<command>")
 
     p = sub.add_parser("init", help="create the database")
@@ -1347,6 +1525,37 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--apply", action="store_true", help="actually do it")
     _add_common(p); p.set_defaults(func=cmd_compact_history)
 
+    p = sub.add_parser("export", help="write everything out")
+    p.add_argument("--format", default="jsonl",
+                   choices=["jsonl", "md", "markdown", "csv", "html", "ics", "vcf"])
+    p.add_argument("--out", metavar="PATH")
+    p.add_argument("--query", nargs="*", help="export only what matches")
+    p.add_argument("--trashed", action="store_true", help="include the trash")
+    p.add_argument("--title", help="title for the HTML export")
+    _add_common(p); p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("import", help="bring things in")
+    p.add_argument("path")
+    p.add_argument("--format", choices=sorted({"jsonl", "md", "markdown", "csv", "dir",
+                                               "directory", "bookmarks", "ics", "vcf",
+                                               "repo"}))
+    p.add_argument("--tag", action="append", default=[])
+    p.add_argument("--map", action="append", default=[], metavar="COLUMN=FIELD")
+    p.add_argument("--dry-run", action="store_true", dest="dry_run")
+    _add_common(p); p.set_defaults(func=cmd_import)
+
+    sp = sub.add_parser("import-list", help="past imports (also: vault import list)")
+    sp.add_argument("--limit", type=int, default=20)
+    _add_common(sp); sp.set_defaults(func=cmd_import_list)
+
+    sp = sub.add_parser("import-undo", help="reverse an import (also: vault import undo)")
+    sp.add_argument("batch")
+    _add_common(sp); sp.set_defaults(func=cmd_import_undo)
+
+    p = sub.add_parser("diff-db", help="compare two databases row by row")
+    p.add_argument("left"); p.add_argument("right")
+    _add_common(p); p.set_defaults(func=cmd_diff_db)
+
     p = sub.add_parser("backup", help="take a verified snapshot")
     p.add_argument("--out", metavar="PATH")
     p.add_argument("--bundle", action="store_true",
@@ -1421,6 +1630,19 @@ def _overview(args) -> int:
 _TAG_REMOVAL = __import__("re").compile(r"^-(?![-])[A-Za-z0-9][A-Za-z0-9/_-]*$")
 
 
+def _fold_import_subverbs(argv: List[str]) -> List[str]:
+    """`vault import list` -> `vault import-list`.
+
+    argparse cannot have a positional path and subcommands on one parser: it
+    matches the first positional against the subcommand choices and rejects
+    anything else. Folding the two sub-verbs into their own commands keeps
+    both spellings working.
+    """
+    if len(argv) >= 2 and argv[0] == "import" and argv[1] in ("list", "undo"):
+        return [f"import-{argv[1]}"] + argv[2:]
+    return argv
+
+
 def _escape_tag_removals(argv: List[str]) -> List[str]:
     if not argv or argv[0] != "tag":
         return argv
@@ -1433,7 +1655,7 @@ def _escape_tag_removals(argv: List[str]) -> List[str]:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     raw = argv if argv is not None else sys.argv[1:]
-    args = parser.parse_args(_escape_tag_removals(list(raw)))
+    args = parser.parse_args(_escape_tag_removals(_fold_import_subverbs(list(raw))))
 
     if not getattr(args, "command", None):
         return _overview(args)

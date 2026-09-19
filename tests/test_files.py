@@ -44,6 +44,44 @@ class TestSecretScanner(unittest.TestCase):
             with self.subTest(text=text[:30]):
                 self.assertTrue(secretscan.scan(text).withhold, text[:40])
 
+    def test_source_code_is_not_mistaken_for_credentials(self):
+        """Regression, found by indexing a real repository.
+
+        An earlier value pattern accepted any run of non-whitespace, so
+        ordinary JavaScript tripped it constantly: 23 legitimate source files
+        were withheld over lines like `const titleTokens = words.map(...)`.
+        Withholding real code defeats the point of indexing a codebase.
+        """
+        for text in ("const titleTokens = words.map(w => w.toLowerCase());",
+                     "maxOutputTokens: config.limit ?? 2048,",
+                     "const { apiKey } = options;",
+                     "const token = process.env.DISCORD_BOT_TOKEN;",
+                     "const apiKey = options.apiKey || '';",
+                     "const authorName = message.author.username;",
+                     "const auth = await getAuthorization(request, session);",
+                     "headers: { Authorization: `Bearer ${token}` }",
+                     "const DASHBOARD_TOKEN = coreEnv.dashboard.token;",
+                     "allowQueryToken: DASHBOARD_ALLOW_QUERY_TOKEN,",
+                     "tokens: Number.MAX_SAFE_INTEGER,",
+                     "const apiKey = resolvedApiKey;",
+                     "serverWith({ token: 'super-secret-token' });"):
+            with self.subTest(text=text[:36]):
+                self.assertFalse(secretscan.scan(text).withhold, text)
+
+    def test_credentials_with_digits_are_still_caught(self):
+        """The counterweight to the rule above.
+
+        Identifier- and phrase-shaped values are excluded only when they
+        contain no digits. Without that condition the camelCase pattern
+        swallows real tokens, because a run of capitals matches it.
+        """
+        for text in ("PASSWORD='Tr0ub4dor3xKcdHorseBattery'",
+                     "ACCESS_TOKEN=abcdefghij1234567890KLMNOPQRST",
+                     'CLIENT_SECRET="k3Jx9vQ2mN8pL4tR7wZ1aB6cD0eF5gH"',
+                     "SECRET=abcdefghijklmnopqrstuvwxyzabcd"):
+            with self.subTest(text=text[:36]):
+                self.assertTrue(secretscan.scan(text).withhold, text)
+
     def test_placeholders_and_paths_are_not_secrets(self):
         """False positives cost a search hit; being noisy about them costs
         the user's trust in the whole feature."""

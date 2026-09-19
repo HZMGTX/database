@@ -53,17 +53,27 @@ TOKEN_PATTERNS: List[tuple] = [
     ("Slack webhook", re.compile(r"https://hooks\.slack\.com/services/[A-Za-z0-9/]{20,}")),
 ]
 
-# An assignment whose name says "secret" and whose value looks like one.
+# An assignment whose name says "secret" AND whose value is a literal that
+# looks like one.
+#
+# The value pattern is the load-bearing half. An earlier version accepted any
+# non-whitespace run, which meant ordinary source code tripped it constantly:
+# scanning one real repository withheld 23 legitimate files over lines like
+# `const titleTokens = words.map(w => w.toLowerCase())` and
+# `maxOutputTokens: config.limit ?? 2048` -- variable names containing
+# "token", assigned expressions.
+#
+# A credential in source is a LITERAL: a quoted string, or a bare run of
+# token characters. Anything containing brackets, operators, spaces or a
+# call is code, and code is not what this is looking for.
+_SECRET_NAME = r"[A-Z0-9_]*(?:SECRET|PASSWORD|PASSWD|TOKEN|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CLIENT[_-]?SECRET|AUTH|CREDENTIAL)[A-Z0-9_]*"
+_LITERAL = r"[A-Za-z0-9_\-+/=.~]"
+
 ASSIGNMENT_RE = re.compile(
-    r"""(?ix)
-    \b(
-        [A-Z0-9_]*(?:SECRET|PASSWORD|PASSWD|TOKEN|API[_-]?KEY|ACCESS[_-]?KEY|
-        PRIVATE[_-]?KEY|CLIENT[_-]?SECRET|AUTH|CREDENTIAL)[A-Z0-9_]*
-    )
-    \s*[:=]\s*
-    ['"]?
-    ([^\s'"#;,]{12,})
-    """)
+    r"(?i)\b(" + _SECRET_NAME + r")\s*[:=]\s*"
+    r"(?:\"(" + _LITERAL + r"{12,})\""
+    r"|'(" + _LITERAL + r"{12,})'"
+    r"|(" + _LITERAL + r"{20,})(?=[\s,;)\]}]|$))")
 
 # Values that name a placeholder rather than hold a secret.
 PLACEHOLDER = re.compile(
@@ -83,6 +93,21 @@ _LOOKS_LIKE_PATH = re.compile(
     r"|^[a-z][a-z0-9+.-]*://"                             # a URL with no credentials
     r"|^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$"  # module.attr.name
 )
+
+
+# A bare identifier is a reference to a secret, not a secret.
+# `DASHBOARD_TOKEN = DASHBOARD_ALLOW_QUERY_TOKEN` names a constant;
+# `const apiKey = resolvedApiKey` names a variable. Real credentials are not
+# written in SCREAMING_SNAKE_CASE or camelCase.
+_IDENTIFIER_LIKE = re.compile(
+    r"^(?:[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+"          # SCREAMING_SNAKE_CASE
+    r"|[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)+"          # camelCase
+    r"|[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+)$")       # PascalCase
+
+# Dictionary words joined by hyphens or underscores are how people write
+# placeholders -- 'super-secret-token', 'change-me-please'. A generated
+# credential is not a sequence of English words.
+_WORDS_LIKE = re.compile(r"^[a-z]+(?:[-_][a-z]+){1,6}$")
 
 
 class Verdict(NamedTuple):
@@ -153,11 +178,23 @@ def scan(text: str, *, path: "str | PurePath | None" = None,
             return Verdict(True, f"looks like a {label}")
 
     for match in ASSIGNMENT_RE.finditer(sample):
-        name, value = match.group(1), match.group(2)
+        name = match.group(1)
+        # Exactly one of the three value alternatives matched.
+        value = match.group(2) or match.group(3) or match.group(4) or ""
         if PLACEHOLDER.match(value) or _PLACEHOLDER_WORDS.search(value):
             continue
         if _LOOKS_LIKE_PATH.match(value):
             continue
+        # Only treat it as an identifier or a phrase when it contains no
+        # digits. That one condition separates the two populations cleanly:
+        # DASHBOARD_ALLOW_QUERY_TOKEN and 'super-secret-token' have none,
+        # while a generated credential essentially always does. Without it,
+        # the camelCase pattern swallows real tokens like
+        # k3Jx9vQ2mN8pL4tR7wZ1aB6cD0eF5gH, because a run of capitals matches
+        # (?:[A-Z][a-z0-9]*)+ perfectly well.
+        if not any(c.isdigit() for c in value):
+            if _IDENTIFIER_LIKE.match(value) or _WORDS_LIKE.match(value):
+                continue
         # A long, high-entropy value assigned to something called SECRET is
         # the single most common shape of a leaked credential.
         if len(value) >= 16 and _entropy(value) >= 3.2:
