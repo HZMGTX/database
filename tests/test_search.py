@@ -201,3 +201,64 @@ class TestShortAndUnsegmentedTerms(VaultTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AdvertisedVocabularyTest(VaultTestCase):
+    """Whatever the error message offers has to work.
+
+    `is:attached` and `has:props` were both listed in the "Try:" line and
+    both rejected by the parser, while `is:any` worked and was never
+    mentioned. Being told to try a flag and then told that flag is unknown
+    is worse than a plain error, because it reads as the tool being broken
+    rather than the query.
+
+    This walks the advertised sets rather than naming the values, so adding
+    a branch without adding its name -- or the reverse -- fails here.
+    """
+
+    def test_every_advertised_flag_parses(self) -> None:
+        from vault.search.parse import FLAG_VALUES, QueryError, compile_query
+
+        for flag in sorted(FLAG_VALUES):
+            with self.subTest(flag=flag):
+                try:
+                    compile_query(f"is:{flag}")
+                except QueryError as exc:
+                    self.fail(f"is:{flag} is advertised but rejected: {exc}")
+
+    def test_every_advertised_structure_parses(self) -> None:
+        from vault.search.parse import STRUCTURE_VALUES, QueryError, compile_query
+
+        for what in sorted(STRUCTURE_VALUES):
+            with self.subTest(has=what):
+                try:
+                    compile_query(f"has:{what}")
+                except QueryError as exc:
+                    self.fail(f"has:{what} is advertised but rejected: {exc}")
+
+    def test_an_unknown_flag_only_suggests_flags_that_work(self) -> None:
+        """The suggestion list is the thing that was wrong, so check it."""
+        from vault.search.parse import QueryError, compile_query
+
+        with self.assertRaises(QueryError) as caught:
+            compile_query("is:nonsense")
+        offered = str(caught.exception).split("Try: ")[1].split(", ")
+
+        for flag in offered:
+            with self.subTest(flag=flag):
+                compile_query(f"is:{flag.strip()}")
+
+    def test_the_flags_run_against_a_real_database(self) -> None:
+        """Parsing is not enough: the SQL each flag builds must execute."""
+        from vault import model, search
+        from vault.search.parse import FLAG_VALUES, STRUCTURE_VALUES
+
+        model.create(self.db, kind="note", title="something", body="text",
+                     tags=["work"])
+        model.create(self.db, kind="task", title="a task",
+                     facet={"status": "todo"})
+
+        for query in ([f"is:{f}" for f in sorted(FLAG_VALUES)] +
+                      [f"has:{h}" for h in sorted(STRUCTURE_VALUES)]):
+            with self.subTest(query=query):
+                search.search(self.db, query)

@@ -77,9 +77,15 @@ _TOKEN_RE = re.compile(r'''
       )
 ''', re.X)
 
-FLAG_VALUES = {"pinned", "untagged", "trashed", "done", "open", "overdue",
-               "orphan", "withheld", "attached"}
-STRUCTURE_VALUES = {"file", "link", "body", "tag", "due", "props"}
+# What `is:` and `has:` actually accept.  These sets are not documentation:
+# they are what the error message offers when someone gets it wrong, so a
+# name in here that the parser does not handle sends the user round in a
+# circle -- told to try `is:attached`, then told `is:attached` is unknown.
+# `test_search.py::test_every_advertised_flag_parses` walks both sets and
+# runs each one, so they cannot drift from the branches below again.
+FLAG_VALUES = {"pinned", "untagged", "trashed", "any", "done", "open",
+               "overdue", "orphan", "withheld"}
+STRUCTURE_VALUES = {"file", "link", "body", "tag", "due"}
 SORTS = {"rank", "recent", "created", "title", "due", "oldest"}
 
 # A term shorter than 3 characters cannot be found by the trigram index, and

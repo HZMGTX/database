@@ -149,21 +149,42 @@ withheld, because being quietly protected is its own problem.
 
 ## Connecting to other applications
 
-```sh
+Vault connects to things; it does not take them over. Two projects are wired
+up, both additively — neither one's data layer was touched.
+
+### The client modules
+
+`clients/` holds the canonical copy of each, and each is installed in its own
+project, where it is the file that runs:
+
+| Project | Installed as |
+| --- | --- |
+| VYREX | `src/services/vaultService.js` |
+| genesis-ai-dev | `lib/vault-client/`, the package `@workspace/vault-client` |
+
+They speak HTTP to a running `vault serve`, so neither project's own database
+is involved. Nothing in either project imports its client until you add an
+import, so both are inert until you use them.
+
+Every call fails soft. Vault is a separate process somebody has to start, so
+it will be down more often than it is up, and a sidecar must not be able to
+fail a request that was not about it — an unreachable server gives back an
+empty result rather than throwing. Pass `strict` where you would rather
+handle the error; you get the HTTP status and the problem document.
+
+See [clients/README.md](clients/README.md).
+
+### Reading another application's database
+
+```
 vault connect vyrex --db-path /path/to/vyrex.db --describe
 vault connect vyrex --db-path /path/to/vyrex.db
 ```
 
-Reads another application's SQLite database so its rows are searchable
-alongside everything else. The connection is `mode=ro` with `query_only`,
-enforced by SQLite itself — this cannot write to the source even if asked to.
-WAL means it does not block the other application either, so it is safe to run
-while that application is live. Re-running reads only rows added since.
-
-`clients/` holds a small module for each project that wants to talk to Vault
-over its API. See `clients/README.md`.
-
----
+The connection is opened `mode=ro` with `query_only`, which SQLite enforces
+itself: this cannot write to the other application's database even if asked
+to. WAL means it does not block that application's own writer either, so it
+is safe to run while the thing is live. Re-running reads only what is new.
 
 ## Looking after it
 
