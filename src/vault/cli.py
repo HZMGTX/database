@@ -1312,6 +1312,116 @@ def cmd_serve(args) -> int:
     return EXIT_OK
 
 
+def cmd_install_cli(args) -> int:
+    """Put `vault` on PATH by symlinking the launcher.
+
+    A symlink rather than a copy, so pulling an update updates the command
+    too. The launcher resolves its own real path through symlinks, which is
+    what makes that work from anywhere.
+    """
+    from pathlib import Path as _Path
+
+    launcher = _Path(__file__).resolve().parent.parent.parent / "vault"
+    if not launcher.is_file():
+        _err(f"cannot find the launcher at {launcher}")
+        return EXIT_NOT_FOUND
+
+    target_dir = _Path(args.to).expanduser()
+    target = target_dir / "vault"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    if target.exists() or target.is_symlink():
+        existing = target.resolve() if target.is_symlink() else target
+        if existing == launcher:
+            _out(f"{STYLE.green('Already installed')} {target}")
+            return _report_path(target_dir, args)
+        if not _confirm(f"{target} already exists. Replace it?", args.yes):
+            return EXIT_REFUSED
+        target.unlink()
+
+    try:
+        target.symlink_to(launcher)
+    except OSError as exc:
+        _err(f"could not create {target}: {exc}")
+        return EXIT_REFUSED
+
+    _out(f"{STYLE.green('Installed')} {target}")
+    _out(STYLE.dim(f"  -> {launcher}"))
+    return _report_path(target_dir, args)
+
+
+def _report_path(target_dir, args) -> int:
+    """Say plainly whether the command will actually be found.
+
+    Installing something the shell cannot see is worse than not installing
+    it, because the failure looks like the program is broken.
+    """
+    entries = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+    on_path = any(
+        os.path.realpath(p) == os.path.realpath(str(target_dir)) for p in entries)
+
+    if args.json:
+        _emit_json({"installed_to": str(target_dir), "on_path": on_path})
+        return EXIT_OK
+
+    if on_path:
+        _out(STYLE.dim("  that directory is on your PATH; `vault` works from anywhere now"))
+    else:
+        _out(STYLE.yellow(f"  {target_dir} is NOT on your PATH, so `vault` will not be found."))
+        _out(STYLE.dim("  Add this to your shell profile:"))
+        _out(STYLE.cyan(f'    export PATH="{target_dir}:$PATH"'))
+    return EXIT_OK
+
+
+def _command_names():
+    """Every subcommand, read back from the parser so it cannot go stale."""
+    for action in build_parser()._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return sorted(action.choices.keys())
+    return []
+
+
+BASH_COMPLETION = """# vault completion for bash
+# add to ~/.bashrc:   source <(vault completion bash)
+_vault_complete() {
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  if [ "$COMP_CWORD" -eq 1 ]; then
+    COMPREPLY=($(compgen -W "%(names)s" -- "$cur"))
+  else
+    COMPREPLY=($(compgen -f -- "$cur"))
+  fi
+}
+complete -F _vault_complete vault
+"""
+
+ZSH_COMPLETION = """# vault completion for zsh
+# add to ~/.zshrc:   source <(vault completion zsh)
+_vault() {
+  if (( CURRENT == 2 )); then
+    compadd %(names)s
+  else
+    _files
+  fi
+}
+compdef _vault vault
+"""
+
+FISH_COMPLETION = """# vault completion for fish
+# save as ~/.config/fish/completions/vault.fish
+complete -c vault -f
+for c in %(names)s
+  complete -c vault -n "__fish_use_subcommand" -a $c
+end
+"""
+
+
+def cmd_completion(args) -> int:
+    template = {"bash": BASH_COMPLETION, "zsh": ZSH_COMPLETION,
+                "fish": FISH_COMPLETION}[args.shell]
+    print(template % {"names": " ".join(_command_names())}, end="")
+    return EXIT_OK
+
+
 def cmd_demo(args) -> int:
     """Load a small, realistic dataset so the tool is explorable immediately."""
     db = _open_db(args)
@@ -1652,6 +1762,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("doctor", help="check the database is sound")
     p.add_argument("--deep", action="store_true")
     _add_common(p); p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("install-cli", help="put `vault` on your PATH")
+    p.add_argument("--to", default="~/.local/bin", metavar="DIR")
+    p.add_argument("--yes", action="store_true")
+    _add_common(p); p.set_defaults(func=cmd_install_cli)
+
+    p = sub.add_parser("completion", help="print a shell completion script")
+    p.add_argument("shell", choices=["bash", "zsh", "fish"])
+    _add_common(p); p.set_defaults(func=cmd_completion)
 
     p = sub.add_parser("demo", help="load sample data")
     _add_common(p); p.set_defaults(func=cmd_demo)
