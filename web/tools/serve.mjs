@@ -7,6 +7,7 @@
  * It is a development tool; nothing in the deployed app imports it.
  */
 import { createServer } from "node:http";
+import { watch } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -77,7 +78,14 @@ const server = createServer(async (req, res) => {
     return res.end(await readFile(file));
   }
 
-  const hit = match(url.pathname);
+  // vercel.json rewrites /api/v1/* to /api/*, so a client written against
+  // the versioned path reaches the same handler. Mirrored here, or this
+  // server would answer 404 for a path production serves.
+  const pathname = url.pathname.startsWith("/api/v1/")
+    ? "/api/" + url.pathname.slice("/api/v1/".length)
+    : url.pathname;
+
+  const hit = match(pathname);
   if (!hit) { res.writeHead(404); return res.end('{"error":"no such route"}'); }
 
   // Vercel gives handlers req.query and res.status()/res.json().
@@ -96,4 +104,21 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`\nlistening on http://127.0.0.1:${PORT}`);
+});
+
+// Exit when anything under api/ changes.
+//
+// The cache-buster on the handler import only reloads the handler itself;
+// its own imports -- _lib/items.js, _lib/query.js -- stay cached for the
+// life of the process. Editing one of those and re-testing silently
+// exercises the OLD code, which looks exactly like the edit not working.
+// Rather than pretend to hot-reload, this stops and says so.
+let stopping = false;
+watch(path.join(ROOT, "api"), { recursive: true }, (_event, name) => {
+  if (stopping || !name || !name.endsWith(".js")) return;
+  stopping = true;
+  console.log(`\n${name} changed — exiting so the next start picks it up.`);
+  console.log("(imports below the handler stay cached; a restart is the only honest reload)");
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 500).unref();
 });

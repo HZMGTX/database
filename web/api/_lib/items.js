@@ -32,6 +32,15 @@ export function newUid() {
   return stamp + tail;
 }
 
+/**
+ * The characters a matched run is wrapped in: STX and ETX.
+ *
+ * Control characters rather than markup, so each caller decides how to show
+ * a match. The clients export a renderSnippet() that replaces them.
+ */
+export const MARK_START = "\u0002";
+export const MARK_END = "\u0003";
+
 function shape(row) {
   return {
     uid: row.uid,
@@ -46,6 +55,9 @@ function shape(row) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     deleted_at: row.deleted_at,
+    // The clients were written against this field, so it is part of the
+    // contract rather than a convenience.
+    trashed: Boolean(row.deleted_at),
   };
 }
 
@@ -54,10 +66,25 @@ export async function search(text, options = {}) {
   const started = Date.now();
   const q = compile(text, options);
 
+  // A real highlighted passage when there is something to highlight.
+  // ts_headline picks the part of the body the match is in and wraps each
+  // matched run, which is what makes a result list readable; without a text
+  // query there is nothing to centre on, so the opening of the body is used.
+  const snippet = q.textParam
+    ? `CASE WHEN i.body = '' THEN '' ELSE ts_headline('english', i.body,
+            to_tsquery('english', $${q.textParam}),
+            'StartSel=${MARK_START}, StopSel=${MARK_END}, MaxWords=32, ` +
+      `MinWords=12, ShortWord=2, MaxFragments=1, FragmentDelimiter=" … "') END`
+    : `CASE WHEN i.body = '' THEN '' ELSE left(i.body, 240) END`;
+
+  const score = q.textParam
+    ? `-ts_rank_cd(i.search, to_tsquery('english', $${q.textParam}))`
+    : "0";
+
   const sql =
     `SELECT ${COLUMNS},
-            CASE WHEN i.body = '' THEN ''
-                 ELSE left(i.body, 240) END AS preview
+            ${snippet} AS snippet,
+            ${score}::float8 AS score
        FROM item i
       WHERE ${q.where}
       ORDER BY ${q.order}
@@ -80,7 +107,13 @@ export async function search(text, options = {}) {
   return {
     query: text,
     understood: q.understood,
-    hits: page.map((row) => ({ ...shape(row), preview: row.preview })),
+    hits: page.map((row) => ({
+      ...shape(row),
+      snippet: row.snippet ?? "",
+      // Negated, so that better matches sort first ascending -- the same
+      // convention BM25 uses, which is what the clients document.
+      score: Number(row.score ?? 0),
+    })),
     total: total > 1000 ? 1000 : total,
     total_capped: total > 1000,
     truncated,

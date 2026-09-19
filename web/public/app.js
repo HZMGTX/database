@@ -13,6 +13,10 @@
   "use strict";
 
   const KEY = "db.token";
+
+  /** What the server wraps a matched run in: STX and ETX. */
+  const MARK_START = "\u0002";
+  const MARK_END = "\u0003";
   const el = (id) => document.getElementById(id);
 
   const ui = {
@@ -335,10 +339,26 @@
     }
     button.append(head);
 
-    if (hit.preview) {
+    if (hit.snippet) {
       const preview = document.createElement("div");
       preview.className = "hit-preview";
-      preview.textContent = hit.preview;
+      // The matched runs arrive wrapped in two control characters so that
+      // each caller picks its own rendering. Here they become <mark>, built
+      // from text nodes so that stored text is never parsed as markup.
+      let cursor = 0;
+      for (const part of hit.snippet.split(MARK_START)) {
+        const [inside, ...rest] = part.split(MARK_END);
+        if (cursor === 0 && !rest.length) {
+          preview.append(document.createTextNode(inside));
+        } else if (rest.length) {
+          const mark = document.createElement("mark");
+          mark.textContent = inside;
+          preview.append(mark, document.createTextNode(rest.join(MARK_END)));
+        } else {
+          preview.append(document.createTextNode(inside));
+        }
+        cursor++;
+      }
       button.append(preview);
     }
 

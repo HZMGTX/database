@@ -35,11 +35,16 @@ curl -X POST -H "Authorization: Bearer $API_TOKEN" https://<your-url>/api/admin/
 
 Everything except `/api/health` needs `Authorization: Bearer <API_TOKEN>`.
 
+Every route is also served under `/api/v1/…`, because the clients in the
+projects were written against that prefix and a merged client cannot be asked
+to change.
+
 | | |
 | --- | --- |
 | `GET /api/health` | up? attached? how many items? — no token needed |
 | `GET /api/stats` | counts by kind and tag |
-| `GET /api/items?q=…&limit=&offset=` | search |
+| `GET /api/search?q=…&limit=&offset=` | search |
+| `GET /api/items?q=…&limit=&offset=` | the same thing, under the collection |
 | `POST /api/items` | write one |
 | `GET /api/items/:ref` | read one, with its links |
 | `PATCH /api/items/:ref` | change only the fields you send |

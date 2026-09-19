@@ -239,6 +239,7 @@ export function compile(text, { limit = 50, offset = 0 } = {}) {
   // Postgres full-text. Phrases use <-> so the words must be adjacent;
   // everything else is ANDed, and exclusions are subtracted.
   let textQuery = null;
+  let textParam = null;   // 1-based placeholder number, for SELECT to reuse
   const pieces = [];
   for (const { term, isPhrase } of positives) {
     pieces.push(isPhrase ? phraseToTsquery(term) : wordToTsquery(term));
@@ -250,7 +251,9 @@ export function compile(text, { limit = 50, offset = 0 } = {}) {
   const usable = pieces.filter(Boolean);
   if (usable.length) {
     textQuery = usable.join(" & ");
-    where.push(`i.search @@ to_tsquery('english', ${bind(textQuery)})`);
+    const placeholder = bind(textQuery);
+    textParam = Number(placeholder.slice(1));
+    where.push(`i.search @@ to_tsquery('english', ${placeholder})`);
   }
 
   if (wantTrashed) where.push("i.deleted_at IS NOT NULL");
@@ -266,8 +269,11 @@ export function compile(text, { limit = 50, offset = 0 } = {}) {
 
   let order = SORTS[sort];
   if (sort === "rank") {
+    // Reuses the WHERE binding rather than adding another, which keeps the
+    // count statement -- which has no ORDER BY -- able to take exactly the
+    // parameters it references.
     order = textQuery
-      ? `ts_rank_cd(i.search, to_tsquery('english', ${bind(textQuery)})) DESC, i.id DESC`
+      ? `ts_rank_cd(i.search, to_tsquery('english', $${textParam})) DESC, i.id DESC`
       : "i.updated_at DESC, i.id DESC";
   }
 
@@ -280,6 +286,7 @@ export function compile(text, { limit = 50, offset = 0 } = {}) {
     offset,
     understood,
     textQuery,
+    textParam,
   };
 }
 
