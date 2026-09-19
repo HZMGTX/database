@@ -20,8 +20,8 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
-from vault import (SCHEMA_VERSION, __version__, dates, files, history, ids,
-                   model, search)
+from vault import (SCHEMA_VERSION, __version__, backup, dates, files, history,
+                   ids, model, search, sqlsh)
 from vault.db import Database, sqlite_capabilities
 from vault.migrate import MigrationError, migrate
 from vault.paths import DB_ENV_VAR, Layout, resolve
@@ -934,6 +934,120 @@ def cmd_compact_history(args) -> int:
     return EXIT_OK
 
 
+def cmd_backup(args) -> int:
+    db = _open_db(args)
+    if args.bundle:
+        from pathlib import Path as _Path
+        target = _Path(args.out or (db.layout.root / "vault-bundle.zip"))
+        path = backup.bundle(db, target)
+        payload = {"bundle": str(path), "size": path.stat().st_size}
+        _emit_json(payload) if args.json else _out(
+            f"{STYLE.green('Bundled')} {path}  "
+            f"{STYLE.dim(format(payload['size'], ',') + ' bytes')}\n"
+            f"{STYLE.dim('  database + every attachment, ready to move to another machine')}")
+        db.close()
+        return EXIT_OK
+
+    result = backup.take(db, target=args.out, note=args.note or "")
+    if args.prune:
+        backup.prune(db)
+    if args.json:
+        _emit_json(result._asdict())
+    else:
+        mark = STYLE.green("verified") if result.verified else STYLE.red("FAILED VERIFICATION")
+        _out(f"{STYLE.green('Backed up')} {result.path}")
+        _out(STYLE.dim(f"  {result.size:,} bytes, {mark} ({result.note})"))
+    db.close()
+    return EXIT_OK if result.verified else EXIT_INTEGRITY
+
+
+def cmd_backups(args) -> int:
+    db = _open_db(args)
+    rows = db.conn().execute(
+        "SELECT at, path, size_bytes, verified, kind FROM backup_log "
+        "ORDER BY at DESC LIMIT ?", (args.limit,)).fetchall()
+    if args.json:
+        _emit_json([{"at": r[0], "path": r[1], "size": r[2],
+                     "verified": bool(r[3]), "kind": r[4]} for r in rows])
+    elif not rows:
+        _out(STYLE.dim("No backups yet. Run `vault backup`."))
+    else:
+        for at, path, size, verified, kind in rows:
+            mark = STYLE.green("ok") if verified else STYLE.red("BAD")
+            _out(f"  {at}  {mark}  {size / 1e6:7.2f} MB  {kind:12} "
+                 f"{STYLE.dim(os.path.basename(path))}")
+        age = backup.age_hours(db)
+        if age is not None:
+            _out()
+            _out(STYLE.dim(f"  most recent: {age:.1f} hours ago"))
+    db.close()
+    return EXIT_OK
+
+
+def cmd_restore_backup(args) -> int:
+    db = _open_db(args)
+    from pathlib import Path as _Path
+    try:
+        preview = backup.restore(db, _Path(args.path), confirm=False)
+    except (FileNotFoundError, ValueError) as exc:
+        _err(str(exc)); db.close(); return EXIT_INTEGRITY
+    if not _confirm(f"Replace the live database with {args.path}? "
+                    f"({preview['detail']})", args.yes):
+        db.close()
+        return EXIT_REFUSED
+    result = backup.restore(db, _Path(args.path), confirm=True)
+    _emit_json(result) if args.json else _out(
+        f"{STYLE.green('Restored')} from {args.path}\n"
+        f"{STYLE.dim('  the database it replaced was saved to ' + result['previous_saved_to'])}")
+    return EXIT_OK
+
+
+def cmd_sql(args) -> int:
+    db = _open_db(args)
+    try:
+        result = sqlsh.run(db, " ".join(args.query), limit=args.limit)
+    except sqlsh.SqlError as exc:
+        _err(str(exc)); db.close(); return EXIT_USAGE
+    if args.json:
+        _emit_json(result)
+    elif args.csv:
+        print(sqlsh.to_csv(result), end="")
+    else:
+        _out(sqlsh.to_table(result))
+        _out()
+        _out(STYLE.dim(f"  {len(result['rows'])} row(s)"
+                       f"{' (truncated)' if result['truncated'] else ''}"
+                       f"   {result['took_ms']} ms   read-only"))
+    db.close()
+    return EXIT_OK
+
+
+def cmd_optimize(args) -> int:
+    db = _open_db(args)
+    conn = db.conn()
+    steps = []
+    conn.execute("ANALYZE"); steps.append("ANALYZE")
+    conn.execute("PRAGMA optimize"); steps.append("PRAGMA optimize")
+    for table in ("item_fts", "item_trgm"):
+        conn.execute(f"INSERT INTO {table}({table}) VALUES('optimize')")
+        steps.append(f"{table} optimize")
+    before = os.path.getsize(db.path)
+    if args.vacuum:
+        conn.execute("VACUUM"); steps.append("VACUUM")
+    after = os.path.getsize(db.path)
+    if args.json:
+        _emit_json({"steps": steps, "before": before, "after": after})
+    else:
+        for step in steps:
+            _out(STYLE.dim(f"  {step}"))
+        if args.vacuum:
+            _out(f"  {before / 1e6:.2f} MB -> {after / 1e6:.2f} MB")
+        else:
+            _out(STYLE.dim("  pass --vacuum to also rewrite the file and reclaim space"))
+    db.close()
+    return EXIT_OK
+
+
 def cmd_serve(args) -> int:
     from vault.httpd import Server
 
@@ -950,6 +1064,12 @@ def cmd_serve(args) -> int:
                  f"Try --port {args.port + 1}.")
         db.close()
         return EXIT_REFUSED
+
+    scheduler = None
+    if not args.no_backups:
+        # A backup command the user has to remember is not a backup strategy.
+        scheduler = backup.Scheduler(db, interval_hours=args.backup_every,
+                                     log=logger).start()
 
     url = server.base_url
     _out(f"{STYLE.bold('Vault')} is serving at {STYLE.cyan(url)}")
@@ -971,6 +1091,8 @@ def cmd_serve(args) -> int:
         _out()
         _out(STYLE.dim("  stopped"))
     finally:
+        if scheduler:
+            scheduler.stop()
         server.stop()
         db.close()
     return EXIT_OK
@@ -1185,6 +1307,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--token", help="require this bearer token")
     p.add_argument("--open", action="store_true", help="open a browser")
     p.add_argument("--verbose", action="store_true", help="log every request")
+    p.add_argument("--backup-every", type=float, default=6.0, dest="backup_every",
+                   metavar="HOURS")
+    p.add_argument("--no-backups", action="store_true",
+                   help="do not take automatic backups while serving")
     _add_common(p); p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("extract", help="read text from stored files not yet indexed")
@@ -1220,6 +1346,32 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--keep-per-item", type=int, default=30, dest="keep_per_item")
     p.add_argument("--apply", action="store_true", help="actually do it")
     _add_common(p); p.set_defaults(func=cmd_compact_history)
+
+    p = sub.add_parser("backup", help="take a verified snapshot")
+    p.add_argument("--out", metavar="PATH")
+    p.add_argument("--bundle", action="store_true",
+                   help="one zip with the database and every attachment")
+    p.add_argument("--prune", action="store_true", help="thin out old snapshots after")
+    p.add_argument("--note", default="")
+    _add_common(p); p.set_defaults(func=cmd_backup)
+
+    p = sub.add_parser("backups", help="list snapshots")
+    p.add_argument("--limit", type=int, default=20)
+    _add_common(p); p.set_defaults(func=cmd_backups)
+
+    p = sub.add_parser("restore-backup", help="replace the database with a snapshot")
+    p.add_argument("path"); p.add_argument("--yes", action="store_true")
+    _add_common(p); p.set_defaults(func=cmd_restore_backup)
+
+    p = sub.add_parser("sql", help="run a read-only SQL query")
+    p.add_argument("query", nargs="+")
+    p.add_argument("--limit", type=int, default=200)
+    p.add_argument("--csv", action="store_true")
+    _add_common(p); p.set_defaults(func=cmd_sql)
+
+    p = sub.add_parser("optimize", help="update statistics and compact indexes")
+    p.add_argument("--vacuum", action="store_true", help="also rewrite the file")
+    _add_common(p); p.set_defaults(func=cmd_optimize)
 
     p = sub.add_parser("stats", help="what is in here")
     _add_common(p); p.set_defaults(func=cmd_stats)
