@@ -161,6 +161,9 @@ class TestClientModulesExist(unittest.TestCase):
                 self.assertTrue((self.ROOT / name).is_file(), name)
         self.assertTrue((self.ROOT / "README.md").is_file())
         self.assertTrue((self.ROOT / "vyrex" / "remoteDbService.test.js").is_file())
+        # VYREX does not merely carry the client, it uses it.
+        self.assertTrue((self.ROOT / "vyrex" / "command" / "database.js").is_file())
+        self.assertTrue((self.ROOT / "vyrex" / "command" / "databaseCommand.test.js").is_file())
         # The genesis copy is a whole workspace package, not a loose file.
         for name in ("package.json", "tsconfig.json", "README.md"):
             self.assertTrue((self.ROOT / "remote-db-client" / name).is_file(), name)
@@ -187,6 +190,24 @@ class TestClientModulesExist(unittest.TestCase):
         for name in self.CLIENTS:
             with self.subTest(client=name):
                 self.assertIn("Idempotency-Key", (self.ROOT / name).read_text())
+
+    def test_clients_reach_the_real_database_with_nothing_configured(self):
+        """A localhost default makes every call fail and read as a broken
+        client rather than an unconfigured one. DB_TOKEN is the only thing
+        that has to be set, because it is the only thing that is secret."""
+        for name in self.CLIENTS:
+            with self.subTest(client=name):
+                source = (self.ROOT / name).read_text()
+                self.assertNotIn("http://127.0.0.1:8787", source)
+                self.assertRegex(source, r'DEFAULT_BASE = "?\'?https://')
+
+    def test_the_command_never_leaks_the_snippet_markers(self):
+        """Two invisible control characters in a Discord channel is what
+        happens when a snippet is posted unprocessed."""
+        source = (self.ROOT / "vyrex" / "command" / "database.js").read_text()
+        self.assertIn("renderSnippet", source)
+        tests = (self.ROOT / "vyrex" / "command" / "databaseCommand.test.js").read_text()
+        self.assertIn("STX leaked", tests)
 
     def test_clients_render_the_snippet_markers(self):
         """A hit's snippet wraps matches in STX and ETX rather than markup, so

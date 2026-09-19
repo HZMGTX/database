@@ -7,27 +7,33 @@ knows, and write into it.
 the code lives beside the server it talks to; each is also present in its own
 project, where it is the file that actually runs.
 
-| Project | Installed as | Pull request |
+| Project | Installed as | |
 | --- | --- | --- |
-| VYREX | `src/services/remoteDbService.js` + `tests/remoteDbService.test.js` | [VYREX#27](https://github.com/HZMGTX/VYREX/pull/27) |
-| genesis-ai-dev | `lib/remote-db-client/` — the package `@workspace/remote-db-client` | [genesis-ai-dev#49](https://github.com/HZMGTX/genesis-ai-dev/pull/49) |
+| VYREX | `src/services/remoteDbService.js`, plus a `db` command in `src/commands/utility/` | [#27](https://github.com/HZMGTX/VYREX/pull/27) |
+| genesis-ai-dev | `lib/remote-db-client/` — the package `@workspace/remote-db-client` | [#49](https://github.com/HZMGTX/genesis-ai-dev/pull/49) merged, [#50](https://github.com/HZMGTX/genesis-ai-dev/pull/50) |
 
-Neither project imports its client until you add an import, so both are inert
-until you use them.
+VYREX actually uses its client, through a `db` command that searches the
+database and touches nothing else. The genesis package is still inert:
+nothing imports it until you add an import.
 
 If you change one here, copy it back across; there is no build step that does
 it for you, deliberately — a generated file in someone else's repository is
 worse than a copied one.
 
-## Running the server
+## Pointing them somewhere
 
-```
-cd /path/to/database
-./db serve
-```
+Both clients default to the deployed database, so the only variable that
+has to be set is **`DB_TOKEN`** — it is a secret and cannot ship in a
+repository.
 
-That binds `127.0.0.1:8787`. Set `DB_URL` if you move it and `DB_TOKEN`
-if you started it with `--token` or `--lan`.
+| | |
+| --- | --- |
+| `DB_TOKEN` | required; the bearer token |
+| `DB_URL` | override only to point somewhere else |
+| `DB_TIMEOUT_MS` | `8000`; a serverless cold start can take a second |
+
+To run against a local copy instead: `./db serve` binds `127.0.0.1:8787`,
+and `DB_URL` points at it.
 
 ## VYREX
 

@@ -48,15 +48,13 @@ behaviour.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `DB_URL` | `http://127.0.0.1:8787` | Where the server is |
+| `DB_URL` | the deployed database | Override only to point elsewhere |
 | `DB_TOKEN` | — | Bearer token, if started with `--token` |
-| `DB_TIMEOUT_MS` | `2000` | Per-request timeout |
+| `DB_TIMEOUT_MS` | `8000` | Per-request timeout; a cold start can take a second |
 
-Start the server on the same machine:
-
-```
-cd /path/to/database && ./db serve
-```
+`DB_TOKEN` is the only one that has to be set — it is a secret, so it
+cannot ship in the repository. Everything else already points at the real
+database.
 
 ## Failure
 

@@ -1,19 +1,17 @@
 'use strict';
 
 /**
- * the database — a bridge to a local personal database.
+ * A client for the shared database.
  *
- * the database (https://github.com/HZMGTX/database) keeps notes, tasks, events,
- * links, people and files in one SQLite file with full-text search over all
- * of it. This service lets VYREX search what is in there and write things
+ * https://github.com/HZMGTX/database keeps notes, tasks, events, links,
+ * people and files in one place, with full-text search over all of it. This service lets VYREX search what is in there and write things
  * into it from a command handler.
  *
  * Three things are deliberately true of this file:
  *
- *   1. **Nothing in VYREX imports it until you choose to.** Adding it changes
- *      no behaviour. Wire it into a command when you want it.
+ *   1. **Additive.** The `db` command is the only thing that uses it.
  *   2. **Every call fails soft.** A note-taking sidecar must never be able to
- *      take the bot down, so a the database that is not running, or is slow, gives
+ *      take the bot down, so a database that is not answering, or is slow, gives
  *      back an empty result instead of throwing into a handler. Pass
  *      `strict: true` on any call where you would rather see the error.
  *   3. **It touches no VYREX data.** It speaks HTTP to a separate process.
@@ -22,24 +20,42 @@
  *
  * Configuration, all optional:
  *
- *   DB_URL         where the server is      (default http://127.0.0.1:8787)
- *   DB_TOKEN       bearer token, if the server was started with --token
- *   DB_TIMEOUT_MS  per-request timeout      (default 2000)
+ *   DB_TOKEN       required; the bearer token. It is the only one that
+ *                  has to be set, because it is the only one that is secret.
+ *   DB_URL         override only to point somewhere else
+ *   DB_TIMEOUT_MS  per-request timeout (default 8000; a serverless cold
+ *                  start can take a second)
  *   DB_DEBUG       set to 1 to log why a call failed
- *
- * Start the server on the machine running the bot:
- *
- *   cd /path/to/database && ./db serve
  *
  * @module services/remoteDbService
  */
 
-const DEFAULT_BASE = 'http://127.0.0.1:8787';
-const DEFAULT_TIMEOUT_MS = 2000;
+// The deployed database. A localhost default was right when the only
+// database was one you started by hand on the same machine; it is wrong now
+// that there is a real one, because it makes every call fail by default and
+// look like the bot is broken rather than unconfigured.
+const DEFAULT_BASE = 'https://database-null-s-projects4.vercel.app';
+// Two seconds was right for a server on the same machine. The database is
+// now a serverless function across the internet, and a cold start alone can
+// take longer than that -- verified: `db legendary` timed out at 2000ms on
+// the first call and answered in well under a second on the next. A timeout
+// that fires on the first request of the day is worse than a slow one.
+const DEFAULT_TIMEOUT_MS = 8000;
 const API = '/api/v1';
 
 /**
- * Where the the database server is.
+ * Whether a token is configured at all.
+ *
+ * Worth separating from "the server did not answer": one is something to
+ * fix in the environment, the other is the database being down, and telling
+ * them apart is the difference between a useful message and a shrug.
+ */
+function configured() {
+  return Boolean(process.env.DB_TOKEN);
+}
+
+/**
+ * Where the database is.
  *
  * Read on every call rather than captured at load time, so that all four
  * settings behave the same way. Reading the URL once while reading the token
@@ -84,9 +100,9 @@ function note(what, error) {
 }
 
 /**
- * Performs one request against the the database API.
+ * Performs one request against the database API.
  *
- * the database answers errors with RFC 9457 problem+json, so a failure always
+ * The database answers errors with RFC 9457 problem+json, so a failure always
  * carries a sentence worth logging rather than only a status code.
  *
  * @param {string} path - Path below the API root, e.g. `/items`
@@ -133,7 +149,7 @@ async function request(path, options = {}) {
   } catch (error) {
     if (error.name === 'AbortError') {
       const timeout = new Error(`db: no answer within ${timeoutMs}ms`);
-      timeout.code = 'VAULT_TIMEOUT';
+      timeout.code = 'DB_TIMEOUT';
       throw timeout;
     }
     throw error;
@@ -154,7 +170,7 @@ async function request(path, options = {}) {
  * @param {object} [options]
  * @param {number} [options.limit=20] - Maximum hits to return
  * @param {boolean} [options.strict=false] - Throw instead of returning []
- * @returns {Promise<Array<object>>} Ranked hits, or [] when the database is away
+ * @returns {Promise<Array<object>>} Ranked hits, or [] when the database is unreachable
  */
 async function search(query, options = {}) {
   const { limit = 20, strict = false } = options;
@@ -185,7 +201,7 @@ async function search(query, options = {}) {
  * @param {object} [item.props={}] - Arbitrary fields, queryable once written
  * @param {object} [item.facet] - Kind-specific fields, e.g. `{ status, due }`
  * @param {boolean} [item.strict=false] - Throw instead of returning null
- * @returns {Promise<object|null>} The created item, or null when the database is away
+ * @returns {Promise<object|null>} The created item, or null when the database is unreachable
  */
 async function capture(item = {}) {
   const { title, body = '', kind = 'note', tags = [], props = {}, facet,
@@ -224,10 +240,10 @@ async function get(ref, options = {}) {
 }
 
 /**
- * Checks whether a the database server is answering.
+ * Checks whether the database is answering.
  *
  * Use this to gate a command rather than letting it silently return nothing:
- * "the database is not running" is a better reply than an empty list.
+ * "the database is not answering" is a better reply than an empty list.
  *
  * @param {object} [options]
  * @param {number} [options.timeoutMs=500] - Short on purpose
@@ -244,7 +260,7 @@ async function available(options = {}) {
 }
 
 /**
- * The characters the database wraps a matched run in: STX and ETX.
+ * The characters a matched run is wrapped in: STX and ETX.
  *
  * Control characters rather than markup, so each caller decides how to show a
  * match. A hit's `snippet` carries them, and sending one straight into a
@@ -281,6 +297,7 @@ function idempotencyKey() {
 }
 
 module.exports = {
+  configured,
   search,
   capture,
   get,

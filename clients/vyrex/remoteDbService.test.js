@@ -20,7 +20,7 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 
 let server;
-let database;
+let db;
 let handler;          // set per test; receives (req, res)
 const received = [];  // every request the stub saw
 
@@ -43,7 +43,7 @@ before(async () => {
   process.env.DB_URL = `http://127.0.0.1:${server.address().port}`;
   delete process.env.DB_TOKEN;
   delete process.env.DB_DEBUG;
-  database = require('../src/services/remoteDbService');
+  db = require('../src/services/remoteDbService');
 });
 
 after(async () => {
@@ -68,7 +68,7 @@ function json(status, payload) {
 test('search sends the query and returns the hits', async () => {
   handler = json(200, { hits: [{ uid: 'abc', title: 'A ticket' }], total: 1 });
 
-  const hits = await database.search('kind:task status:todo', { limit: 5 });
+  const hits = await db.search('kind:task status:todo', { limit: 5 });
 
   assert.equal(hits.length, 1);
   assert.equal(hits[0].title, 'A ticket');
@@ -83,14 +83,14 @@ test('search sends the query and returns the hits', async () => {
 test('search returns an empty array when the database answers with an error', async () => {
   handler = json(400, { title: 'Bad query', detail: 'unknown flag is:nonsense' });
 
-  assert.deepEqual(await database.search('is:nonsense'), []);
+  assert.deepEqual(await db.search('is:nonsense'), []);
 });
 
 test('search rethrows the problem detail in strict mode', async () => {
   handler = json(400, { title: 'Bad query', detail: 'unknown flag is:nonsense' });
 
   await assert.rejects(
-    () => database.search('is:nonsense', { strict: true }),
+    () => db.search('is:nonsense', { strict: true }),
     (error) => {
       assert.equal(error.message, 'unknown flag is:nonsense');
       assert.equal(error.status, 400);
@@ -105,13 +105,13 @@ test('search survives a body that is not JSON at all', async () => {
     res.end('<html>a proxy error page</html>');
   };
 
-  assert.deepEqual(await database.search('anything'), []);
+  assert.deepEqual(await db.search('anything'), []);
 });
 
 test('capture posts the item and carries an idempotency key', async () => {
   handler = json(201, { uid: 'new-uid', title: 'Ticket #412 escalated' });
 
-  const created = await database.capture({
+  const created = await db.capture({
     title: 'Ticket #412 escalated',
     body: 'Customer waited two days.',
     tags: ['support', 'guild/9'],
@@ -130,27 +130,40 @@ test('capture posts the item and carries an idempotency key', async () => {
 test('two captures use different idempotency keys', async () => {
   handler = json(201, { uid: 'x' });
 
-  await database.capture({ title: 'one' });
-  await database.capture({ title: 'two' });
+  await db.capture({ title: 'one' });
+  await db.capture({ title: 'two' });
 
   assert.notEqual(received[0].headers['idempotency-key'],
                   received[1].headers['idempotency-key']);
 });
 
 test('capture refuses an item with no title, without calling out', async () => {
-  assert.equal(await database.capture({ body: 'orphaned text' }), null);
+  assert.equal(await db.capture({ body: 'orphaned text' }), null);
   assert.equal(received.length, 0);
 });
 
 test('a slow server times out rather than hanging a handler', async () => {
   handler = () => { /* never responds */ };
 
-  const started = Date.now();
-  const hits = await database.search('slow', { limit: 1 });
-  const elapsed = Date.now() - started;
+  // The timeout is set explicitly rather than leaning on the default. This
+  // test is about the mechanism giving up at all, and pinning it to
+  // whatever the default happens to be makes it fail the moment that
+  // number changes for an unrelated reason -- which is exactly what
+  // happened when the default moved from 2s to 8s for cold starts.
+  const good = process.env.DB_TIMEOUT_MS;
+  process.env.DB_TIMEOUT_MS = '600';
+  try {
+    const started = Date.now();
+    const hits = await db.search('slow', { limit: 1 });
+    const elapsed = Date.now() - started;
 
-  assert.deepEqual(hits, []);
-  assert.ok(elapsed < 4000, `gave up after ${elapsed}ms`);
+    assert.deepEqual(hits, []);
+    assert.ok(elapsed >= 500, `gave up too early, after ${elapsed}ms`);
+    assert.ok(elapsed < 3000, `gave up after ${elapsed}ms`);
+  } finally {
+    if (good === undefined) delete process.env.DB_TIMEOUT_MS;
+    else process.env.DB_TIMEOUT_MS = good;
+  }
 });
 
 test('a server that is not running yields empty results, not a throw', async () => {
@@ -159,16 +172,16 @@ test('a server that is not running yields empty results, not a throw', async () 
   const good = process.env.DB_URL;
   process.env.DB_URL = 'http://127.0.0.1:9';
   try {
-    assert.deepEqual(await database.search('nobody home'), []);
-    assert.equal(await database.capture({ title: 'nobody home' }), null);
-    assert.equal(await database.get('abcdef12'), null);
-    assert.equal(await database.available(), false);
+    assert.deepEqual(await db.search('nobody home'), []);
+    assert.equal(await db.capture({ title: 'nobody home' }), null);
+    assert.equal(await db.get('abcdef12'), null);
+    assert.equal(await db.available(), false);
   } finally {
     process.env.DB_URL = good;
   }
 
   // ...and it recovers the moment the server is back.
-  assert.deepEqual(await database.search('still fine'), []);
+  assert.deepEqual(await db.search('still fine'), []);
   assert.equal(received.length, 1);
 });
 
@@ -176,7 +189,7 @@ test('DB_URL is honoured when it changes, and trailing slashes are trimmed', asy
   const good = process.env.DB_URL;
   process.env.DB_URL = `${good}///`;
   try {
-    await database.search('trimmed');
+    await db.search('trimmed');
     assert.equal(received[0].url.startsWith('/api/v1/search?'), true);
   } finally {
     process.env.DB_URL = good;
@@ -185,21 +198,21 @@ test('DB_URL is honoured when it changes, and trailing slashes are trimmed', asy
 
 test('available reports true only when the server says ok', async () => {
   handler = json(200, { ok: true, version: '1.0.0' });
-  assert.equal(await database.available(), true);
+  assert.equal(await db.available(), true);
 
   handler = json(503, { title: 'Not ready' });
-  assert.equal(await database.available(), false);
+  assert.equal(await db.available(), false);
 });
 
 test('the bearer token is sent only when one is configured', async () => {
   handler = json(200, { hits: [] });
 
-  await database.search('no token');
+  await db.search('no token');
   assert.equal(received[0].headers.authorization, undefined);
 
   process.env.DB_TOKEN = 'secret-token';
   try {
-    await database.search('with token');
+    await db.search('with token');
     assert.equal(received[1].headers.authorization, 'Bearer secret-token');
   } finally {
     delete process.env.DB_TOKEN;
@@ -209,21 +222,21 @@ test('the bearer token is sent only when one is configured', async () => {
 test('get looks an item up by its short handle', async () => {
   handler = json(200, { uid: '01a0bb3f6522764c86e8335019b3cd5e', title: 'Found' });
 
-  const item = await database.get('19b3cd5e');
+  const item = await db.get('19b3cd5e');
 
   assert.equal(item.title, 'Found');
   assert.equal(received[0].url, '/api/v1/items/19b3cd5e');
 });
 
 test('renderSnippet replaces the highlight markers', () => {
-  const snippet = `Please review the ${database.MARK_START}budget${database.MARK_END} before Friday.`;
+  const snippet = `Please review the ${db.MARK_START}budget${db.MARK_END} before Friday.`;
 
-  assert.equal(database.renderSnippet(snippet),
+  assert.equal(db.renderSnippet(snippet),
                'Please review the budget before Friday.');
-  assert.equal(database.renderSnippet(snippet, { start: '**', end: '**' }),
+  assert.equal(db.renderSnippet(snippet, { start: '**', end: '**' }),
                'Please review the **budget** before Friday.');
   // A snippet is empty when the match was in the title, so there is no
   // passage to quote. That must not become the string "undefined".
-  assert.equal(database.renderSnippet(''), '');
-  assert.equal(database.renderSnippet(undefined), '');
+  assert.equal(db.renderSnippet(''), '');
+  assert.equal(db.renderSnippet(undefined), '');
 });

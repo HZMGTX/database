@@ -1,43 +1,52 @@
 /**
- * A typed client for a local the database server.
+ * A typed client for the shared database.
  *
- * the database (https://github.com/HZMGTX/database) is a self-contained personal
- * database: notes, tasks, events, links, people and files in one SQLite file,
- * with full-text search, tags, relationships and versioned history over all
- * of it. This package speaks to its REST API over HTTP.
+ * https://github.com/HZMGTX/database keeps notes, tasks, events, links,
+ * people and files in one place, with full-text search, tags, relationships
+ * and versioned history over all of it. This package speaks to its REST API.
  *
  * Three properties are deliberate:
  *
  *   1. **Additive.** Nothing in the monorepo imports this until you add an
  *      import. Adding the package changes no behaviour.
- *   2. **Fail-soft by default.** An unreachable or slow the database returns an
+ *   2. **Fail-soft by default.** An unreachable or slow database returns an
  *      empty result rather than throwing, because a sidecar should not be
  *      able to fail a request that was not about it. Pass `strict` where you
  *      would rather handle the error.
- *   3. **Separate from `lib/db`.** the database holds its own store in its own
+ *   3. **Separate from `lib/db`.** The database holds its own store in its own
  *      process. No Postgres connection, Drizzle schema or existing table is
  *      involved.
  *
  * Configuration is read from the environment on every call, so changing it
  * takes effect without a restart:
  *
- *   DB_URL         default http://127.0.0.1:8787
- *   DB_TOKEN       bearer token, when the server was started with --token
- *   DB_TIMEOUT_MS  default 2000
+ *   DB_TOKEN       required; the bearer token. The only one that has to
+ *                  be set, because it is the only one that is secret.
+ *   DB_URL         override only to point somewhere else
+ *   DB_TIMEOUT_MS  default 8000; a serverless cold start can take a second
  */
 
-const DEFAULT_BASE = "http://127.0.0.1:8787";
-const DEFAULT_TIMEOUT_MS = 2000;
+// The deployed database. A localhost default was right when the only
+// database was one you started by hand on the same machine; it is wrong now
+// that there is a real one, because it makes every call fail by default and
+// read as the client being broken rather than unconfigured.
+const DEFAULT_BASE = "https://database-null-s-projects4.vercel.app";
+// Two seconds suits a server on the same machine. This one is a serverless
+// function across the internet, where a cold start alone can exceed that --
+// measured at just over a second on a first call and well under on the
+// next. A timeout that fires on the first request of the day is worse than
+// a slow one.
+const DEFAULT_TIMEOUT_MS = 8000;
 const API = "/api/v1";
 
-/** The kinds the database ships with. Any other string is a kind you defined. */
+/** The kinds that ship with it. Any other string is a kind you defined. */
 export type DbKind = "note" | "task" | "event" | "link" | "file" | "person";
 
 /** Where a task stands. */
 export type TaskStatus = "todo" | "doing" | "blocked" | "done" | "cancelled";
 
 /**
- * The characters the database wraps a matched run in: STX and ETX.
+ * The characters a matched run is wrapped in: STX and ETX.
  *
  * They are control characters rather than HTML or ANSI on purpose, so that
  * each caller decides how to render a match without having to unpick someone
@@ -82,7 +91,7 @@ export interface DbSearchPage {
   understood?: string[];
   /** Anything the caller should know about how the query ran. */
   note?: string;
-  /** How long the database took, server-side. */
+  /** How long the search took, server-side. */
   took_ms?: number;
 }
 
@@ -106,7 +115,7 @@ export function renderSnippet(
     .split(MARK_END).join(marks.end ?? "");
 }
 
-/** A whole item, as the database composes it. */
+/** A whole item. */
 export interface DbItem {
   uid: string;
   kind: string;
@@ -154,7 +163,7 @@ export interface CallOptions {
   signal?: AbortSignal;
 }
 
-/** A the database call that did not succeed. */
+/** A call that did not succeed. */
 export class DbError extends Error {
   /** HTTP status, when the server answered at all. */
   readonly status?: number;
@@ -170,8 +179,26 @@ export class DbError extends Error {
   }
 }
 
+/**
+ * The one thing here that is not a web standard.
+ *
+ * Declared locally rather than pulled in from @types/node, so this package
+ * has no dependencies at all and nothing has to be added to the lockfile to
+ * build it. Everything else it uses -- fetch, AbortController, AbortSignal,
+ * URLSearchParams, setTimeout -- comes from the DOM lib, the same way
+ * lib/api-client-react gets its globals.
+ *
+ * The optional chaining is not decoration: this file is written to run in a
+ * browser too, where `process` does not exist at all.
+ */
+declare const process: { env?: Record<string, string | undefined> } | undefined;
+
 function env(name: string): string | undefined {
-  return typeof process !== "undefined" ? process.env?.[name] : undefined;
+  try {
+    return typeof process !== "undefined" ? process?.env?.[name] : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The configured base URL, without a trailing slash. */
@@ -194,7 +221,7 @@ function headersFor(extra?: Record<string, string>): Record<string, string> {
 }
 
 /**
- * One request against the the database API.
+ * One request against the database API.
  *
  * Exported because the API is larger than the four helpers below: history,
  * revisions, tags, links, export and the rest are all reachable this way
@@ -361,10 +388,10 @@ export async function get(
 }
 
 /**
- * Whether a the database server is answering.
+ * Whether the database is answering.
  *
  * Worth calling before a feature that depends on the database, so the interface can
- * say "the database is not running" instead of showing an empty list.
+ * say so instead of showing an empty list.
  */
 export async function available(options: CallOptions = {}): Promise<boolean> {
   try {
