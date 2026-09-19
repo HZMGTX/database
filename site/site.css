@@ -280,7 +280,21 @@ footer.bottom nav { margin-left: auto; display: flex; gap: 20px; flex-wrap: wrap
 .hero { padding: clamp(64px, 11vw, 132px) 0 clamp(56px, 8vw, 96px); }
 .hero h1 { max-width: 22ch; }
 
+/* These were inline style attributes until the site went up behind its own
+   Content-Security-Policy. `style-src 'self'` blocks a style attribute as
+   surely as it blocks a <style> block, and it does it quietly: the rule is
+   dropped, the page still renders, and only the spacing is wrong. Anything
+   the layout depends on has to live in a stylesheet. */
+.hero-lede     { margin-top: 22px; }
+.hero-actions  { margin-top: 32px; }
+.footnote      { margin-top: 14px; }
+.footnote-wide { margin-top: 28px; }
+.note.spaced   { margin-top: 28px; }
+.centred       { text-align: center; }
+.centred-lede  { margin: 18px auto 30px; }
+
 .stats {
+  margin-top: 56px;
   display: grid; gap: 1px;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   background: var(--edge);

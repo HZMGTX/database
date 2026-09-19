@@ -34,18 +34,18 @@
   <div class="wrap">
     <p class="eyebrow">One file · zero dependencies · offline forever</p>
     <h1>Everything you keep,<br>in one database you own.</h1>
-    <p class="lede" style="margin-top:22px">
+    <p class="lede hero-lede">
       Notes, tasks, events, links, people and files live in a single SQLite
       file on your disk. Search, tags, relationships, history, trash, undo,
       import and export are written once and behave the same for all of it —
       including kinds you invent later.
     </p>
-    <div class="row" style="margin-top:32px">
+    <div class="row hero-actions">
       <a class="button primary" href="/demo">Search a live demo →</a>
       <a class="button" href="#install">How to install</a>
     </div>
 
-    <div class="stats" style="margin-top:56px">
+    <div class="stats">
       <div class="stat"><b>0</b><span>third-party packages</span></div>
       <div class="stat"><b>1</b><span>file to back up</span></div>
       <div class="stat"><b>37</b><span>CLI commands</span></div>
@@ -170,7 +170,7 @@ vault find is:orphan has:file sort:recent</code></pre>
             <tr><td>50,680 documents</td><td>227&nbsp;ms</td></tr>
           </tbody>
         </table>
-        <p class="small muted" style="margin-top:14px">
+        <p class="small muted footnote">
           No cap is applied to hide the last row. Truncating the candidate set
           before ranking was tried and rejected: FTS5 scores every match either
           way, so it buys nothing measurable while silently dropping results.
@@ -178,7 +178,7 @@ vault find is:orphan has:file sort:recent</code></pre>
       </div>
     </div>
 
-    <div class="note" style="margin-top:28px">
+    <div class="note spaced">
       <strong>What it does not do.</strong> There is no semantic search.
       Real embeddings need a model download or an external API, and both are
       ruled out by the zero-dependency, works-offline promise. What ships is
@@ -235,7 +235,7 @@ vault find is:orphan has:file sort:recent</code></pre>
       </li>
     </ol>
 
-    <p class="muted small" style="margin-top:28px">
+    <p class="muted small footnote-wide">
       There were twenty-two more. A linting test mechanically enforces the
       three invariants the whole design rests on: <code>sqlite3.connect</code>
       appears in exactly one module, no SQL is ever built by string formatting,
@@ -288,9 +288,9 @@ cd database
 </section>
 
 <section id="demo-cta">
-  <div class="wrap" style="text-align:center">
+  <div class="wrap centred">
     <h2>See it search.</h2>
-    <p class="lede" style="margin:18px auto 30px">
+    <p class="lede centred-lede">
       The demo runs the same query language against a synthetic corpus, in
       your browser, with no server behind it.
     </p>

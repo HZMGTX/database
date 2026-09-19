@@ -205,6 +205,28 @@ class SiteAssetsTest(unittest.TestCase):
             self.assertNotIn("googletagmanager", text)
             self.assertNotIn("analytics.js", text)
 
+    def test_no_page_uses_an_inline_style_or_script(self) -> None:
+        """The deployed Content-Security-Policy forbids both.
+
+        This is the failure mode worth a test of its own, because it is
+        invisible: `style-src 'self'` drops a style attribute without
+        stopping the page, so the site renders with the wrong spacing and
+        nothing in the interface says why. It only shows up behind the real
+        headers, which is exactly where nobody is looking.
+        """
+        config = json.loads(read("vercel.json"))
+        policy = next(
+            h["value"] for rule in config["headers"] if rule["source"] == "/(.*)"
+            for h in rule["headers"] if h["key"] == "Content-Security-Policy")
+        self.assertIn("style-src 'self'", policy)
+        self.assertNotIn("unsafe-inline", policy)
+        for page in self.PAGES:
+            text = read(page)
+            self.assertNotIn('style="', text, f"{page} has an inline style")
+            self.assertNotRegex(text, r"<style[\s>]", f"{page} has a <style> block")
+            self.assertNotRegex(text, r"<script(?![^>]*\ssrc=)[^>]*>",
+                                f"{page} has an inline script")
+
     def test_pages_declare_a_title_and_a_description(self) -> None:
         for page in self.PAGES:
             text = read(page)
