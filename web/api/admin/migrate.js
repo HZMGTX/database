@@ -5,15 +5,13 @@
  * same text can be applied by hand with psql -- which is what you want at
  * three in the morning when the function is the thing that is broken.
  */
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { handler, send } from "../_lib/http.js";
 import { pool } from "../_lib/db.js";
+import { readAsset } from "../_lib/assets.js";
 
 export default handler(
   async (req, res) => {
-    const file = path.join(process.cwd(), "db", "schema.sql");
-    const sql = await readFile(file, "utf8");
+    const sql = await readAsset("db/schema.sql");
 
     const client = await pool().connect();
     try {

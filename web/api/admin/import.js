@@ -12,9 +12,9 @@
 import { createReadStream } from "node:fs";
 import { createGunzip } from "node:zlib";
 import { createInterface } from "node:readline";
-import path from "node:path";
 import { handler, send } from "../_lib/http.js";
 import { pool } from "../_lib/db.js";
+import { locate } from "../_lib/assets.js";
 
 const NAME = "seed";
 const DEFAULT_CHUNK = 4000;
@@ -24,7 +24,7 @@ export default handler(
     const url = new URL(req.url, "http://localhost");
     const chunk = Math.min(
       Math.max(Number(url.searchParams.get("chunk")) || DEFAULT_CHUNK, 100), 10000);
-    const file = path.join(process.cwd(), "db", "seed.jsonl.gz");
+    const file = await locate("db/seed.jsonl.gz");
 
     const client = await pool().connect();
     try {
