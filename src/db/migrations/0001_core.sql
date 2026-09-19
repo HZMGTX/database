@@ -1,4 +1,4 @@
--- The database core schema, version 1.
+-- Vault core schema, version 1.
 --
 -- Conventions used throughout:
 --
@@ -138,7 +138,7 @@ CREATE INDEX item_pinned       ON item(updated_at DESC)       WHERE pinned = 1 A
 CREATE INDEX item_title        ON item(title)                 WHERE deleted_at IS NULL;
 -- Short handles are the TAIL of the uid, because the head is a timestamp and
 -- barely varies -- 2,000 ids generated in a burst shared one 8-character
--- prefix.  This index is what makes `db show 3f8a2b1c` a seek.
+-- prefix.  This index is what makes `vault show 3f8a2b1c` a seek.
 CREATE INDEX item_uid_suffix   ON item(substr(uid, -8));
 
 -- ===========================================================================
@@ -485,7 +485,7 @@ CREATE INDEX edge_rel ON edge(rel);
 --
 --   change_log  -- "what happened, and can I take it back?"  Append-only,
 --                  transaction-scoped, and it OUTLIVES the rows it describes,
---                  which is what lets `db undo` reverse a bulk retag and
+--                  which is what lets `vault undo` reverse a bulk retag and
 --                  lets a purge still be explainable afterwards.
 --   revision    -- "what did this look like on Tuesday?"  A compressed
 --                  snapshot of the whole composed document.
@@ -765,7 +765,7 @@ CREATE INDEX backup_at ON backup_log(at DESC);
 -- download or an external API -- both ruled out by the no-dependency,
 -- offline, no-account constraints this database is built on.  Rather than
 -- pretend otherwise, the table exists so that opting in later
--- (`db extend embeddings --provider <script>`) is a configuration change
+-- (`vault extend embeddings --provider <script>`) is a configuration change
 -- and not a migration.  What ships is BM25 ranking, trigram fuzzy matching
 -- and synonym expansion: strong lexical search, honestly labelled.
 CREATE TABLE embedding (
@@ -783,7 +783,7 @@ CREATE TABLE embedding (
 -- Triggers cover INSERT, DELETE *and* UPDATE.  The UPDATE case is the one
 -- that matters and the one most easily forgotten: a link item is created
 -- first and its archived copy attached later by UPDATE, so an INSERT-only
--- trigger leaves refcount at 0 and the next `db gc` deletes bytes that
+-- trigger leaves refcount at 0 and the next `vault gc` deletes bytes that
 -- are very much in use.
 -- ===========================================================================
 
