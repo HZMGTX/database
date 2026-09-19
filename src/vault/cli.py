@@ -20,7 +20,8 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
-from vault import SCHEMA_VERSION, __version__, dates, history, ids, model, search
+from vault import (SCHEMA_VERSION, __version__, dates, files, history, ids,
+                   model, search)
 from vault.db import Database, sqlite_capabilities
 from vault.migrate import MigrationError, migrate
 from vault.paths import DB_ENV_VAR, Layout, resolve
@@ -326,6 +327,93 @@ def _read_body(args) -> str:
     if body == "-":
         return sys.stdin.read()
     return body or ""
+
+
+def cmd_add_file(args) -> int:
+    db = _open_db(args)
+    from pathlib import Path as _Path
+    target = _Path(args.path).expanduser()
+    if not target.exists():
+        _err(f"no such file: {target}")
+        db.close()
+        return EXIT_NOT_FOUND
+    if target.is_dir():
+        _err(f"{target} is a directory. Use `vault import` for a whole folder.")
+        db.close()
+        return EXIT_USAGE
+
+    result = files.attach(db, target, title=args.title or None,
+                          tags=args.tag or [], scan_secrets=not args.no_scan)
+    if args.json:
+        _emit_json(result)
+    else:
+        doc = result["item"]
+        size = result["blob"]["size"]
+        _out(f"{STYLE.green('Stored')} {STYLE.dim(ids.short(doc['uid']))}  "
+             f"{doc['title']}  {STYLE.dim(format(size, ',') + ' bytes')}")
+        if result["blob"]["deduplicated"]:
+            _out(STYLE.dim("  identical bytes were already stored; not duplicated"))
+        if result["withheld"]:
+            _out(STYLE.yellow(f"  contents NOT indexed: {result['reason']}"))
+            _out(STYLE.dim("  the file is stored and findable by name; its text is not searchable"))
+    db.close()
+    return EXIT_OK
+
+
+def cmd_extract(args) -> int:
+    """Run the extraction queue over blobs whose text was never read."""
+    db = _open_db(args)
+    from vault import extract as extract_mod
+    conn = db.conn()
+    pending = conn.execute(
+        "SELECT b.id, b.sha256, b.suffix FROM blob b WHERE b.extract_status='pending' "
+        "LIMIT ?", (args.limit,)).fetchall()
+    done = {"ok": 0, "empty": 0, "unsupported": 0, "failed": 0, "skipped": 0}
+    for blob_id, sha, suffix in pending:
+        try:
+            path = files.open_blob(db, sha)
+        except FileNotFoundError:
+            done["failed"] += 1
+            continue
+        result = extract_mod.extract_file(path)
+        done[result.status] = done.get(result.status, 0) + 1
+        with db.write():
+            conn.execute(
+                "UPDATE blob SET extract_status=?, extract_note=?, extracted_text=? WHERE id=?",
+                (result.status, result.note, result.text or None, blob_id))
+    if args.json:
+        _emit_json({"processed": len(pending), "results": done})
+    else:
+        _out(f"  extracted {len(pending)} file(s): " +
+             ", ".join(f"{k} {v}" for k, v in done.items() if v))
+        if not extract_mod.have_pdftotext():
+            unsupported = conn.execute(
+                "SELECT count(*) FROM blob WHERE extract_status='unsupported'").fetchone()[0]
+            if unsupported:
+                _out(STYLE.dim(f"  {unsupported} file(s) need pdftotext on PATH to be indexed"))
+    db.close()
+    return EXIT_OK
+
+
+def cmd_gc(args) -> int:
+    db = _open_db(args)
+    result = files.gc(db, dry_run=not args.apply)
+    if args.json:
+        _emit_json(result)
+    else:
+        verb = "would reclaim" if result["dry_run"] else "reclaimed"
+        _out(f"  {verb} {result['unreferenced']} attachment(s), "
+             f"{result['bytes'] / 1e6:.2f} MB")
+        if result["stale_partials"]:
+            _out(STYLE.dim(f"  {result['stale_partials']} interrupted upload(s)"))
+        if result["missing_bytes"]:
+            _out(STYLE.red(f"  {len(result['missing_bytes'])} attachment(s) are recorded "
+                           f"but their bytes are missing from disk"))
+            _out(STYLE.dim("  that is a restore-from-backup situation, not something gc fixes"))
+        if result["dry_run"]:
+            _out(STYLE.dim("  nothing removed; pass --apply to do it"))
+    db.close()
+    return EXIT_OK if not result["missing_bytes"] else EXIT_INTEGRITY
 
 
 def cmd_add(args) -> int:
@@ -962,6 +1050,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--title", dest="title_for_link", help="title when the URL is positional")
     _add_shared(sp); sp.set_defaults(func=cmd_add)
 
+    sp = add_sub.add_parser("file", help="store a file and index its text")
+    sp.add_argument("path")
+    sp.add_argument("--title")
+    sp.add_argument("--tag", action="append", default=[])
+    sp.add_argument("--no-scan", action="store_true",
+                    help="skip the credential check (not recommended)")
+    _add_common(sp); sp.set_defaults(func=cmd_add_file)
+
     sp = add_sub.add_parser("person", help="a person")
     sp.add_argument("title", nargs="*")
     sp.add_argument("--given"); sp.add_argument("--family")
@@ -1039,6 +1135,14 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(p); p.set_defaults(func=cmd_purge)
 
     # -- operations ---------------------------------------------------------
+    p = sub.add_parser("extract", help="read text from stored files not yet indexed")
+    p.add_argument("--limit", type=int, default=500)
+    _add_common(p); p.set_defaults(func=cmd_extract)
+
+    p = sub.add_parser("gc", help="reclaim attachments nothing references")
+    p.add_argument("--apply", action="store_true")
+    _add_common(p); p.set_defaults(func=cmd_gc)
+
     p = sub.add_parser("history", help="revisions of an item")
     p.add_argument("ref"); p.add_argument("--limit", type=int, default=20)
     _add_common(p); p.set_defaults(func=cmd_history)
