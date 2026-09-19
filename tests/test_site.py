@@ -223,6 +223,24 @@ class SiteAssetsTest(unittest.TestCase):
         self.assertIn("read-only", text)
         self.assertIn("synthetic", text)
 
+    def test_build_inputs_are_not_published(self) -> None:
+        """Vercel serves the whole root directory, so exclusions are explicit.
+
+        The generator and the corpus it reads are repository files, not site
+        files. site/data/ already holds everything a visitor's browser loads.
+        """
+        ignored = [line.strip() for line in read(".vercelignore").splitlines()
+                   if line.strip() and not line.startswith("#")]
+        self.assertIn("build.py", ignored)
+        self.assertIn("corpus.json", ignored)
+        # Whatever is excluded must not be something a page fetches. Prose
+        # may still name build.py -- the footer does -- so this looks at
+        # src and href values rather than at the text.
+        pattern = re.compile(r'(?:src|href)="([^"]+)"')
+        for page in self.PAGES:
+            for ref in pattern.findall(read(page)):
+                self.assertNotIn(ref.lstrip("/"), ignored, f"{page} fetches {ref}")
+
     def test_vercel_config_is_valid_json(self) -> None:
         config = json.loads(read("vercel.json"))
         self.assertIn("headers", config)

@@ -1,0 +1,8 @@
+# The build inputs are not part of the site.
+#
+# Vercel serves everything in the root directory, so without this the
+# generator and its source corpus would be published at /build.py and
+# /corpus.json alongside the pages. They belong in the repository, not on
+# the origin: site/data/ already carries everything the demo loads.
+build.py
+corpus.json
