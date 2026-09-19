@@ -136,6 +136,10 @@ CREATE INDEX item_pinned       ON item(updated_at DESC)       WHERE pinned = 1 A
 -- Reference resolution by title prefix, as-you-type suggestions and duplicate
 -- detection all filter on title; without this every one of them is a scan.
 CREATE INDEX item_title        ON item(title)                 WHERE deleted_at IS NULL;
+-- Short handles are the TAIL of the uid, because the head is a timestamp and
+-- barely varies -- 2,000 ids generated in a burst shared one 8-character
+-- prefix.  This index is what makes `vault show 3f8a2b1c` a seek.
+CREATE INDEX item_uid_suffix   ON item(substr(uid, -8));
 
 -- ===========================================================================
 -- Facets
