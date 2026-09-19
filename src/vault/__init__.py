@@ -15,4 +15,8 @@ __version__ = "0.1.0"
 # The schema version this code knows how to speak.  ``migrate.py`` refuses to
 # open a database whose ``user_version`` is higher than this, because a newer
 # Vault may have written columns this code would silently drop.
-SCHEMA_VERSION = 1
+#
+# This MUST equal the highest migration shipped in migrations/.  Adding a
+# migration without bumping it makes Vault refuse its own schema;
+# tests/test_migrations.py asserts they agree so the two cannot drift.
+SCHEMA_VERSION = 2
