@@ -22,7 +22,8 @@
     count: el("count"), results: el("results"), more: el("more"),
     empty: el("empty"), emptyTitle: el("empty-title"), emptyBody: el("empty-body"),
     totals: el("totals"), kinds: el("kinds"), tags: el("tags"),
-    kindList: el("kind-list"),
+    kindList: el("kind-list"), projectList: el("project-list"),
+    projects: el("projects"), fProject: el("f-project"),
     sheet: el("sheet"), scrim: el("scrim"), editor: el("editor"),
     heading: el("sheet-heading"), close: el("close"),
     fTitle: el("f-title"), fKind: el("f-kind"), fTags: el("f-tags"),
@@ -36,6 +37,12 @@
   let editing = null;      // the item open in the sheet, or null for a new one
   let offset = 0;
   let lastQuery = "";
+  let projects = [];       // [{slug, label, colour, n}]
+  // The project filter is held apart from the search box. Narrowing to one
+  // project is a place you are, not a term you typed -- it should survive
+  // clearing the search, and clearing the search should not dump you back
+  // into all 54,000 rows.
+  let project = null;
 
   // ── Transport ───────────────────────────────────────────────────────────
 
@@ -106,8 +113,60 @@
 
   // ── Facets ──────────────────────────────────────────────────────────────
 
+  function colourOf(slug) {
+    return projects.find((p) => p.slug === slug)?.colour || "var(--ink-3)";
+  }
+
+  function labelOf(slug) {
+    if (slug === "") return "Unfiled";
+    return projects.find((p) => p.slug === slug)?.label || slug;
+  }
+
+  function renderProjects() {
+    ui.projects.textContent = "";
+
+    const total = projects.reduce((sum, p) => sum + p.n, 0);
+    const entries = [{ slug: null, label: "Everything", colour: null, n: total },
+                     ...projects];
+
+    for (const entry of entries) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("aria-pressed", String(entry.slug === project));
+      if (entry.colour) button.style.color = entry.colour;
+
+      const swatch = document.createElement("span");
+      swatch.className = "swatch";
+      if (entry.colour) swatch.style.background = entry.colour;
+      const label = document.createElement("span");
+      label.textContent = entry.label;
+      const count = document.createElement("span");
+      count.className = "n";
+      count.textContent = entry.n.toLocaleString();
+
+      button.append(swatch, label, count);
+      button.addEventListener("click", () => {
+        project = entry.slug === project ? null : entry.slug;
+        renderProjects();
+        run(ui.q.value);
+      });
+      ui.projects.append(button);
+    }
+  }
+
   async function loadFacets() {
     const stats = await api("/stats");
+    projects = stats.projects || [];
+    renderProjects();
+
+    ui.projectList.textContent = "";
+    for (const p of projects) {
+      if (!p.slug) continue;
+      const option = document.createElement("option");
+      option.value = p.slug;
+      option.label = p.label;
+      ui.projectList.append(option);
+    }
 
     ui.totals.textContent = "";
     const n = document.createElement("b");
@@ -166,9 +225,15 @@
     inFlight?.abort();
     inFlight = new AbortController();
 
+    // The project filter is prepended rather than typed into the box, so the
+    // box keeps showing what the person actually wrote.
+    const scoped = project === null
+      ? text
+      : `project:${project === "" ? "none" : project} ${text}`.trim();
+
     try {
       const page = await api(
-        `/items?q=${encodeURIComponent(text)}&limit=50&offset=${offset}`,
+        `/items?q=${encodeURIComponent(scoped)}&limit=50&offset=${offset}`,
         { signal: inFlight.signal });
       render(page, append);
     } catch (error) {
@@ -216,8 +281,14 @@
     if (!shown) {
       const searching = Boolean(lastQuery.trim());
       ui.emptyTitle.textContent = searching ? "Nothing matched." : "Nothing in here yet.";
+      const where = project === null ? "" : ` in ${labelOf(project)}`;
+      ui.emptyTitle.textContent = searching
+        ? `Nothing matched${where}.`
+        : `Nothing${where} yet.`;
       ui.emptyBody.textContent = searching
-        ? "Words are combined with AND, so every one has to be present. Try fewer."
+        ? (project === null
+            ? "Words are combined with AND, so every one has to be present. Try fewer."
+            : "Nothing here matches. Pick Everything above to search all projects.")
         : "Press + Add to put the first thing in.";
     }
 
@@ -238,10 +309,24 @@
     const kind = document.createElement("span");
     kind.className = "kind";
     kind.textContent = hit.kind;
+    head.append(kind);
+
+    // Only worth showing when the list is mixed; inside one project it is
+    // the same word on every row and reads as noise.
+    if (project === null && hit.project) {
+      const badge = document.createElement("span");
+      badge.className = "in-project";
+      badge.style.color = colourOf(hit.project);
+      const swatch = document.createElement("span");
+      swatch.className = "swatch";
+      badge.append(swatch, document.createTextNode(labelOf(hit.project)));
+      head.append(badge);
+    }
+
     const title = document.createElement("span");
     title.className = "hit-title";
     title.textContent = hit.title || "(untitled)";
-    head.append(kind, title);
+    head.append(title);
     if (hit.pinned) {
       const pin = document.createElement("span");
       pin.className = "pin";
@@ -307,6 +392,7 @@
     }
     ui.heading.textContent = "Edit";
     ui.fTitle.value = editing.title;
+    ui.fProject.value = editing.project || "";
     ui.fKind.value = editing.kind;
     ui.fTags.value = (editing.tags || []).join(" ");
     ui.fBody.value = editing.body;
@@ -324,6 +410,9 @@
     editing = null;
     ui.heading.textContent = "Add";
     ui.fTitle.value = "";
+    // A new row lands in whichever project you are looking at, because that
+    // is almost always the one you mean.
+    ui.fProject.value = project || "";
     ui.fKind.value = "note";
     ui.fTags.value = "";
     ui.fBody.value = "";
@@ -370,6 +459,7 @@
 
     const payload = {
       title: ui.fTitle.value,
+      project: ui.fProject.value.trim().toLowerCase(),
       kind: (ui.fKind.value || "note").trim().toLowerCase(),
       body: ui.fBody.value,
       tags: ui.fTags.value.split(/[\s,]+/).filter(Boolean),

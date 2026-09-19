@@ -5,7 +5,7 @@ import { query, transaction } from "./db.js";
 import { compile } from "./query.js";
 
 const FIELDS = [
-  "id", "uid", "kind", "title", "body", "props", "tags",
+  "id", "uid", "project", "kind", "title", "body", "props", "tags",
   "pinned", "rev", "created_at", "updated_at", "deleted_at",
 ];
 
@@ -35,6 +35,7 @@ export function newUid() {
 function shape(row) {
   return {
     uid: row.uid,
+    project: row.project ?? "",
     kind: row.kind,
     title: row.title,
     body: row.body,
@@ -124,6 +125,15 @@ export async function get(ref) {
 }
 
 function clean(input) {
+  const project = String(input.project ?? "").trim().toLowerCase();
+  if (project && !/^[a-z0-9][a-z0-9_-]{0,48}$/.test(project)) {
+    const error = new Error(
+      `'${project}' is not a usable project name. Lowercase letters, digits, ` +
+      `hyphens and underscores, up to 49 characters.`);
+    error.status = 400;
+    throw error;
+  }
+
   const kind = String(input.kind || "note").toLowerCase().trim();
   if (!/^[a-z][a-z0-9_]{0,39}$/.test(kind)) {
     const error = new Error(
@@ -156,7 +166,7 @@ function clean(input) {
       .filter(Boolean),
   )];
 
-  return { kind, title, body: String(input.body ?? ""), props, tags,
+  return { project, kind, title, body: String(input.body ?? ""), props, tags,
            pinned: Boolean(input.pinned) };
 }
 
@@ -176,11 +186,15 @@ export async function create(input, actor = "api") {
   }
 
   return transaction(async (client) => {
+    // A project named on a write is created if it is new, so filing
+    // something under a project you have not set up yet just works.
+    if (value.project) await ensureProject(client, value.project);
+
     const { rows } = await client.query(
-      `INSERT INTO item (uid, kind, title, body, props, tags, pinned)
-            VALUES ($1, $2, $3, $4, $5::jsonb, $6::text[], $7)
+      `INSERT INTO item (uid, project, kind, title, body, props, tags, pinned)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::text[], $8)
        RETURNING ${RETURNING}`,
-      [uid, value.kind, value.title, value.body,
+      [uid, value.project, value.kind, value.title, value.body,
        JSON.stringify(value.props), value.tags, value.pinned]);
 
     const item = shape(rows[0]);
@@ -225,6 +239,7 @@ export async function update(ref, patch, actor = "api") {
     }
 
     const merged = clean({
+      project: patch.project ?? before.project,
       kind: patch.kind ?? before.kind,
       title: patch.title ?? before.title,
       body: patch.body ?? before.body,
@@ -233,15 +248,17 @@ export async function update(ref, patch, actor = "api") {
       pinned: patch.pinned ?? before.pinned,
     });
 
+    if (merged.project) await ensureProject(client, merged.project);
+
     const { rows } = await client.query(
       `UPDATE item
-          SET kind = $2, title = $3, body = $4, props = $5::jsonb,
-              tags = $6::text[], pinned = $7,
+          SET project = $2, kind = $3, title = $4, body = $5, props = $6::jsonb,
+              tags = $7::text[], pinned = $8,
               rev = rev + 1, updated_at = now(),
-              deleted_at = CASE WHEN $8::boolean THEN NULL ELSE deleted_at END
+              deleted_at = CASE WHEN $9::boolean THEN NULL ELSE deleted_at END
         WHERE id = $1
     RETURNING ${RETURNING}`,
-      [found.rows[0].id, merged.kind, merged.title, merged.body,
+      [found.rows[0].id, merged.project, merged.kind, merged.title, merged.body,
        JSON.stringify(merged.props), merged.tags, merged.pinned,
        patch.restore === true]);
 
@@ -291,4 +308,13 @@ export async function remove(ref, { purge = false } = {}, actor = "api") {
       [trashed.uid, trashed.rev, JSON.stringify(trashed), "trash", actor]);
     return { ...trashed, purged: false };
   });
+}
+
+/** Creates a project row the first time something is filed under it. */
+async function ensureProject(client, slug) {
+  await client.query(
+    `INSERT INTO project (slug, label)
+          VALUES ($1, initcap(replace($1, '-', ' ')))
+     ON CONFLICT (slug) DO NOTHING`,
+    [slug]);
 }

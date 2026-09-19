@@ -83,6 +83,7 @@ export default handler(
         // be an array of its own, which is what this data actually is.
         const payload = batch.map((d) => ({
           uid: String(d.uid).toLowerCase(),
+          project: projectOf(d),
           kind: sanitizeKind(d.kind),
           title: String(d.title ?? "").slice(0, 500),
           body: String(d.body ?? ""),
@@ -95,16 +96,17 @@ export default handler(
 
         await client.query("BEGIN");
         await client.query(
-          `INSERT INTO item (uid, kind, title, body, props, tags, pinned,
+          `INSERT INTO item (uid, project, kind, title, body, props, tags, pinned,
                              created_at, updated_at)
-           SELECT r.uid, r.kind, r.title, r.body, r.props,
+           SELECT r.uid, r.project, r.kind, r.title, r.body, r.props,
                   ARRAY(SELECT jsonb_array_elements_text(r.tags)),
                   r.pinned, r.created_at, r.updated_at
              FROM jsonb_to_recordset($1::jsonb) AS r(
-                    uid text, kind text, title text, body text, props jsonb,
-                    tags jsonb, pinned boolean,
+                    uid text, project text, kind text, title text, body text,
+                    props jsonb, tags jsonb, pinned boolean,
                     created_at timestamptz, updated_at timestamptz)
            ON CONFLICT (uid) DO UPDATE SET
+             project = EXCLUDED.project,
              kind = EXCLUDED.kind, title = EXCLUDED.title, body = EXCLUDED.body,
              props = EXCLUDED.props, tags = EXCLUDED.tags,
              updated_at = EXCLUDED.updated_at`,
@@ -139,6 +141,26 @@ export default handler(
   },
   { methods: ["POST"] },
 );
+
+/**
+ * Which project a row belongs to.
+ *
+ * An explicit `project` wins; otherwise it comes from the `repo/<name>` tag
+ * the export already carries, which is where this grouping lived before it
+ * had a column of its own.
+ */
+function projectOf(doc) {
+  const explicit = String(doc.project ?? "").trim().toLowerCase();
+  if (/^[a-z0-9][a-z0-9_-]{0,48}$/.test(explicit)) return explicit;
+
+  for (const tag of Array.isArray(doc.tags) ? doc.tags : []) {
+    const text = String(tag);
+    if (!text.startsWith("repo/")) continue;
+    const slug = text.slice(5).toLowerCase();
+    if (/^[a-z0-9][a-z0-9_-]{0,48}$/.test(slug)) return slug;
+  }
+  return "";
+}
 
 /** The export can carry kinds the CHECK constraint would reject. */
 function sanitizeKind(kind) {

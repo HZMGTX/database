@@ -36,6 +36,11 @@
     <button class="button ghost" id="lock" type="button" title="Forget the token on this device">Lock</button>
   </header>
 
+  <!-- What a row is FOR. First thing on the page, because the answer to
+       "which of these 54,000 things is mine to care about right now" comes
+       before any search. -->
+  <nav class="projects" id="projects" aria-label="Projects"></nav>
+
   <p class="explain" id="explain" aria-live="polite"></p>
 
   <div class="layout">
@@ -91,15 +96,20 @@
 
     <div class="row2">
       <div>
+        <label for="f-project">Project <span class="muted">what is this for?</span></label>
+        <input id="f-project" type="text" list="project-list" spellcheck="false"
+               placeholder="leave blank for unfiled">
+        <datalist id="project-list"></datalist>
+      </div>
+      <div>
         <label for="f-kind">Kind</label>
         <input id="f-kind" type="text" list="kind-list" spellcheck="false" placeholder="note">
         <datalist id="kind-list"></datalist>
       </div>
-      <div>
-        <label for="f-tags">Tags <span class="muted">space or comma separated</span></label>
-        <input id="f-tags" type="text" spellcheck="false" placeholder="work/finance personal">
-      </div>
     </div>
+
+    <label for="f-tags">Tags <span class="muted">space or comma separated</span></label>
+    <input id="f-tags" type="text" spellcheck="false" placeholder="work/finance personal">
 
     <label for="f-body">Body</label>
     <textarea id="f-body" rows="8" placeholder="Anything. It gets indexed."></textarea>

@@ -118,6 +118,39 @@ CREATE INDEX IF NOT EXISTS item_live_idx    ON item (id)         WHERE deleted_a
 CREATE INDEX IF NOT EXISTS item_short_idx ON item (right(uid, 8));
 
 -- ---------------------------------------------------------------------------
+-- Projects
+--
+-- What a row is FOR. Everything in here comes from somewhere -- one repo,
+-- one piece of work, or nothing in particular -- and without a column that
+-- says so you are left reading tag conventions to tell 53,442 rows of game
+-- data apart from 665 rows of something else.
+--
+-- A plain slug on the item rather than a foreign key: an import must never
+-- fail because a project row was not created first, and a project with no
+-- items left should not block deleting it. The table below carries the
+-- label and colour; the item carries the slug.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS project (
+  slug       TEXT PRIMARY KEY,
+  label      TEXT        NOT NULL,
+  colour     TEXT,
+  note       TEXT        NOT NULL DEFAULT '',
+  sort_order INTEGER     NOT NULL DEFAULT 100,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT project_slug_shape CHECK (slug ~ '^[a-z0-9][a-z0-9_-]{0,48}$'),
+  CONSTRAINT project_colour_shape CHECK (colour IS NULL OR colour ~ '^#[0-9a-fA-F]{6}$')
+);
+
+-- '' means "not filed under anything", which is a real answer and not a
+-- missing one, so the column is NOT NULL and the empty string is the
+-- unfiled bucket. NULL would make every query need IS NULL handling.
+ALTER TABLE item ADD COLUMN IF NOT EXISTS project TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS item_project_idx
+  ON item (project, updated_at DESC) WHERE deleted_at IS NULL;
+
+-- ---------------------------------------------------------------------------
 -- Links
 -- ---------------------------------------------------------------------------
 
@@ -162,35 +195,37 @@ CREATE TABLE IF NOT EXISTS kind_count (
   n     BIGINT NOT NULL DEFAULT 0
 );
 
-CREATE OR REPLACE FUNCTION bump_kind_count() RETURNS TRIGGER AS $$
+CREATE TABLE IF NOT EXISTS project_count (
+  project TEXT PRIMARY KEY,
+  n       BIGINT NOT NULL DEFAULT 0
+);
+
+-- One trigger keeps both tallies, because an update can move a row between
+-- kinds, between projects, into the trash or back out, and two triggers
+-- reading the same OLD/NEW would have to agree about all of it.
+CREATE OR REPLACE FUNCTION bump_counts() RETURNS TRIGGER AS $$
 BEGIN
-  IF TG_OP = 'INSERT' THEN
-    IF NEW.deleted_at IS NULL THEN
-      INSERT INTO kind_count(kind, n) VALUES (NEW.kind, 1)
-        ON CONFLICT (kind) DO UPDATE SET n = kind_count.n + 1;
-    END IF;
-  ELSIF TG_OP = 'DELETE' THEN
-    IF OLD.deleted_at IS NULL THEN
-      UPDATE kind_count SET n = GREATEST(n - 1, 0) WHERE kind = OLD.kind;
-    END IF;
-  ELSE
-    -- An update can move a row between kinds, into the trash, or back out.
-    IF OLD.deleted_at IS NULL THEN
-      UPDATE kind_count SET n = GREATEST(n - 1, 0) WHERE kind = OLD.kind;
-    END IF;
-    IF NEW.deleted_at IS NULL THEN
-      INSERT INTO kind_count(kind, n) VALUES (NEW.kind, 1)
-        ON CONFLICT (kind) DO UPDATE SET n = kind_count.n + 1;
-    END IF;
+  IF TG_OP <> 'INSERT' AND OLD.deleted_at IS NULL THEN
+    UPDATE kind_count    SET n = GREATEST(n - 1, 0) WHERE kind = OLD.kind;
+    UPDATE project_count SET n = GREATEST(n - 1, 0) WHERE project = OLD.project;
   END IF;
+
+  IF TG_OP <> 'DELETE' AND NEW.deleted_at IS NULL THEN
+    INSERT INTO kind_count(kind, n) VALUES (NEW.kind, 1)
+      ON CONFLICT (kind) DO UPDATE SET n = kind_count.n + 1;
+    INSERT INTO project_count(project, n) VALUES (NEW.project, 1)
+      ON CONFLICT (project) DO UPDATE SET n = project_count.n + 1;
+  END IF;
+
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS item_kind_count ON item;
-CREATE TRIGGER item_kind_count
+DROP TRIGGER IF EXISTS item_counts ON item;
+CREATE TRIGGER item_counts
   AFTER INSERT OR UPDATE OR DELETE ON item
-  FOR EACH ROW EXECUTE FUNCTION bump_kind_count();
+  FOR EACH ROW EXECUTE FUNCTION bump_counts();
 
 -- ---------------------------------------------------------------------------
 -- Bookkeeping for the one-time import, so it can resume after a timeout
@@ -203,3 +238,87 @@ CREATE TABLE IF NOT EXISTS import_progress (
   total       BIGINT      NOT NULL DEFAULT 0,
   finished_at TIMESTAMPTZ
 );
+
+-- ---------------------------------------------------------------------------
+-- Backfill and reconcile
+--
+-- Runs every time the schema is applied. The backfill only ever fills blanks,
+-- so a row filed by hand is never overwritten by the tag it happens to carry.
+-- ---------------------------------------------------------------------------
+
+-- Rows imported before `project` existed carry their origin as a `repo/<x>`
+-- tag. That is where the grouping already lived, so that is where it comes
+-- from -- nobody should have to re-file 54,000 rows by hand.
+-- `FROM unnest(i.tags)` cannot be used here: an UPDATE may not re-reference
+-- its own target table in the FROM clause, and Postgres rejects it with
+-- "invalid reference to FROM-clause entry for table i". A correlated
+-- subquery reads the row's own array instead, and the EXISTS guard keeps
+-- this from rewriting every unfiled row on each apply.
+UPDATE item
+   SET project = (
+         SELECT substring(t FROM 6)
+           FROM unnest(tags) AS t
+          WHERE t LIKE 'repo/%'
+            AND substring(t FROM 6) ~ '^[a-z0-9][a-z0-9_-]{0,48}$'
+          ORDER BY t
+          LIMIT 1)
+ WHERE project = ''
+   AND EXISTS (
+         SELECT 1
+           FROM unnest(tags) AS t
+          WHERE t LIKE 'repo/%'
+            AND substring(t FROM 6) ~ '^[a-z0-9][a-z0-9_-]{0,48}$');
+
+-- Known projects get a real name and a colour first, so the derived title
+-- case below does not leave "Vyrex" and "Genesis Ai Dev" sitting in the
+-- interface. Anything else gets a reasonable guess that can be edited.
+-- DO NOTHING would be wrong on a re-apply: the derived insert below may
+-- already have written "Vyrex", and DO NOTHING would keep it forever. The
+-- WHERE is what makes this safe -- it only replaces a label that is still
+-- exactly the auto-derived guess, so a name you edited is never overwritten.
+INSERT INTO project (slug, label, colour, sort_order) VALUES
+  ('vyrex',          'VYREX',          '#00f8ff', 10),
+  ('genesis-ai-dev', 'Genesis AI Dev', '#ba00ff', 20)
+ON CONFLICT (slug) DO UPDATE
+   SET label      = EXCLUDED.label,
+       colour     = COALESCE(project.colour, EXCLUDED.colour),
+       sort_order = EXCLUDED.sort_order
+ WHERE project.label = initcap(replace(project.slug, '-', ' '));
+
+INSERT INTO project (slug, label)
+SELECT DISTINCT i.project, initcap(replace(i.project, '-', ' '))
+  FROM item i
+ WHERE i.project <> ''
+ON CONFLICT (slug) DO NOTHING;
+
+-- A second pass for rows that name their project some other way. Data read
+-- out of another application's own database arrives tagged `vyrex` and
+-- `vyrex/warnings`, never `repo/vyrex`, so the pass above leaves it unfiled.
+--
+-- The match is against project slugs that ALREADY EXIST, not against any
+-- tag root, which is the whole point: `vyrex` is a project because a repo
+-- tag established it above, while `data/fish` and `lang/js` are just tags
+-- and must not become projects of their own.
+UPDATE item
+   SET project = (
+         SELECT p.slug
+           FROM project p
+          WHERE p.slug = ANY(ARRAY(SELECT split_part(t, '/', 1) FROM unnest(tags) t))
+          ORDER BY p.sort_order, p.slug
+          LIMIT 1)
+ WHERE project = ''
+   AND EXISTS (
+         SELECT 1
+           FROM project p
+          WHERE p.slug = ANY(ARRAY(SELECT split_part(t, '/', 1) FROM unnest(tags) t)));
+
+-- The counts are derived, so they are rebuilt rather than trusted: a bulk
+-- import or a backfill like the one above moves rows without the per-row
+-- trigger ever seeing the final state.
+TRUNCATE kind_count;
+INSERT INTO kind_count (kind, n)
+SELECT kind, count(*) FROM item WHERE deleted_at IS NULL GROUP BY kind;
+
+TRUNCATE project_count;
+INSERT INTO project_count (project, n)
+SELECT project, count(*) FROM item WHERE deleted_at IS NULL GROUP BY project;

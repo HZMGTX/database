@@ -29,6 +29,7 @@ const CLAUSE = new RegExp(
 
 const SORTS = {
   rank: null, // handled separately: needs the text query to rank against
+  project: "i.project ASC, i.kind ASC, i.title ASC, i.id ASC",
   recent: "i.updated_at DESC, i.id DESC",
   oldest: "i.updated_at ASC, i.id ASC",
   created: "i.created_at DESC, i.id DESC",
@@ -106,6 +107,20 @@ export function compile(text, { limit = 50, offset = 0 } = {}) {
         const n = Number.parseInt(value, 10);
         if (!Number.isFinite(n)) throw new QueryError(`offset needs a number, got '${value}'`);
         offset = Math.max(0, n);
+        continue;
+      }
+
+      if (name === "project" || name === "p") {
+        // "" is the unfiled bucket, and `project:none` is how you ask for it
+        // -- an empty value cannot be typed, and nothing is a real answer.
+        const wanted = value.split(",").map((v) => v.trim()).filter(Boolean)
+          .map((v) => (["none", "unfiled", "-"].includes(v.toLowerCase())
+            ? "" : v.toLowerCase()));
+        if (!wanted.length) throw new QueryError("project: needs a value");
+        where.push(`i.project ${negate ? "<> ALL" : "= ANY"}(${bind(wanted)})`);
+        understood.push(
+          `${negate ? "not " : ""}in ` +
+          wanted.map((w) => (w === "" ? "no project" : w)).join(" or "));
         continue;
       }
 
