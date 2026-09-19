@@ -1,0 +1,48 @@
+#!/bin/sh
+# Vault launcher.
+#
+# Resolves its own real path first, so the command works from any directory
+# and through a symlink -- `ln -s /path/to/database/vault ~/.local/bin/vault`
+# is all "install the CLI" means.
+
+set -e
+
+# Follow symlinks to find where this script actually lives.
+SELF="$0"
+while [ -L "$SELF" ]; do
+  LINK=$(readlink "$SELF")
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *)  SELF="$(dirname "$SELF")/$LINK" ;;
+  esac
+done
+HERE=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd -P)
+
+# Pick an interpreter.  Vault needs Python 3.9+ for zoneinfo.
+PY=""
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    if "$candidate" -c 'import sys; sys.exit(0 if sys.version_info[:2] >= (3, 9) else 1)' 2>/dev/null; then
+      PY="$candidate"
+      break
+    fi
+  fi
+done
+
+if [ -z "$PY" ]; then
+  echo "vault: needs Python 3.9 or newer, and did not find one." >&2
+  echo >&2
+  if [ "$(uname -s)" = "Darwin" ]; then
+    echo "  macOS:   xcode-select --install" >&2
+    echo "           or install from https://python.org/downloads" >&2
+  elif [ -f /etc/debian_version ]; then
+    echo "  Debian/Ubuntu:  sudo apt install python3" >&2
+  elif [ -f /etc/fedora-release ]; then
+    echo "  Fedora:  sudo dnf install python3" >&2
+  else
+    echo "  Install Python 3.9+ from https://python.org/downloads" >&2
+  fi
+  exit 127
+fi
+
+PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}" exec "$PY" -m vault "$@"
