@@ -101,10 +101,11 @@ vault serve            # http://127.0.0.1:8787
 vault serve --lan      # reachable from your network, with a token
 ```
 
-Press `t` for the Theme Customizer: 53 tokens covering colour, glass, glow,
-layout, typography, depth and motion, with five presets, live contrast
-readouts and one-click export. Nothing in the interface is a hardcoded visual
-decision.
+The interface has no settings. The palette, spacing and depth are fixed:
+a deep violet-cast void, translucent panels separated by a hairline rather
+than a heavy border, and cyan and violet used strictly as signal — focus,
+selection, live state — never as surface. Every text colour clears WCAG AA
+against what it actually sits on.
 
 `--lan` generates a token rather than defaulting to none, because the same
 database that is harmless on loopback is not harmless on shared wifi.

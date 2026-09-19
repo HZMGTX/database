@@ -1,9 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    PARALLAX FIELD
 
-   A decorative depth plane that reads its configuration from the live theme
-   on every frame, so moving a slider in the Customizer changes it instantly
-   with no restart, no reallocation and no flicker.
+   A decorative depth plane behind the interface: three layers of drifting
+   particles with spring-damped pointer parallax, tuned to read as depth
+   rather than as an effect.
 
    Four properties this holds:
 
@@ -16,17 +16,15 @@
         off-screen at once.
 
      2. **Object pooling, with no reallocation ever.** Particles live in flat
-        typed arrays sized once to the maximum the registry allows. Changing
-        the star count changes how many are *drawn*, not how many exist, so
-        dragging that slider allocates nothing. The render loop creates no
-        objects at all and therefore contributes nothing to garbage
-        collection — which is what stops a background effect from causing
-        periodic stutter in the foreground.
+        typed arrays allocated once. The render loop creates no objects at
+        all and therefore contributes nothing to garbage collection — which
+        is what stops a background effect from causing periodic stutter in
+        the foreground.
 
-     3. **Live token reads, without style recalculation.** Colours and
-        scalars come from the theme's numeric mirror, which is a plain
-        object lookup. Calling getComputedStyle here would force the browser
-        to flush style 60 times a second; this never touches the CSSOM.
+     3. **No style reads in the loop.** Colours and physics are constants in
+        this module. Reading them from CSS with getComputedStyle would force
+        the browser to flush style 60 times a second; this never touches the
+        CSSOM at all.
 
      4. **It gets out of the way.** It stops when the tab is hidden, when the
         machine cannot hold a frame budget, when the pointer has been idle,
@@ -34,8 +32,21 @@
         that drains battery while nobody is looking at it is a bug.
    ═══════════════════════════════════════════════════════════════════════ */
 
-const MAX_PARTICLES = 320;          // the registry's ceiling for fieldCount
+/* Fixed art direction: 92 particles across three depth layers, tuned so the
+   near plane reads as motion and the far plane as texture. More than this
+   and the field competes with the content; fewer and the depth collapses. */
+const PARTICLE_COUNT = 92;
 const LAYERS = 3;
+const PARALLAX_THROW = 26;          // px of displacement at the near plane
+const BLOOM = 1;
+
+/* Star hues, matching the interface signal colours. Most are near-white;
+   roughly one in seven picks up cyan and one in eight violet, which is
+   enough for the field to feel of a piece with the interface without
+   turning into confetti. */
+const HUE_WHITE = [235, 240, 255];
+const HUE_CYAN = [0, 248, 255];
+const HUE_VIOLET = [186, 0, 255];
 const LAYER_SPEED = [0.052, 0.028, 0.013];
 const LAYER_SIZE = [1.55, 1.05, 0.70];
 const LAYER_ALPHA = [0.70, 0.46, 0.28];
@@ -48,26 +59,25 @@ const SLOW_FRAME_LIMIT = 90;
 
 /**
  * @param {HTMLCanvasElement} canvas
- * @param {object} options
- * @param {import('./theme.js').Theme} options.theme  Live token source.
+ * @param {object} [options]
  * @param {boolean} [options.reducedMotion]
  */
-export function startField(canvas, { theme, reducedMotion = false } = {}) {
-  if (!canvas || !theme) return { stop() {} };
+export function startField(canvas, { reducedMotion = false } = {}) {
+  if (!canvas) return { stop() {} };
 
   const context = canvas.getContext('2d', { alpha: true, desynchronized: true });
   if (!context) return { stop() {} };
 
   /* ── the pool ──────────────────────────────────────────────────────────
      Allocated once at maximum capacity. Never grown, never replaced.     */
-  const px = new Float32Array(MAX_PARTICLES);
-  const py = new Float32Array(MAX_PARTICLES);
-  const pz = new Uint8Array(MAX_PARTICLES);
-  const pr = new Float32Array(MAX_PARTICLES);
-  const pa = new Float32Array(MAX_PARTICLES);
-  const pt = new Float32Array(MAX_PARTICLES);
-  const ptw = new Float32Array(MAX_PARTICLES);
-  const phue = new Uint8Array(MAX_PARTICLES);
+  const px = new Float32Array(PARTICLE_COUNT);
+  const py = new Float32Array(PARTICLE_COUNT);
+  const pz = new Uint8Array(PARTICLE_COUNT);
+  const pr = new Float32Array(PARTICLE_COUNT);
+  const pa = new Float32Array(PARTICLE_COUNT);
+  const pt = new Float32Array(PARTICLE_COUNT);
+  const ptw = new Float32Array(PARTICLE_COUNT);
+  const phue = new Uint8Array(PARTICLE_COUNT);
 
   let width = 0;
   let height = 0;
@@ -84,9 +94,7 @@ export function startField(canvas, { theme, reducedMotion = false } = {}) {
 
   function seedParticles() {
     seed = 0x2f5d50;
-    for (let i = 0; i < MAX_PARTICLES; i += 1) {
-      // Layers interleave so that reducing the count thins every depth
-      // evenly rather than deleting the near plane first.
+    for (let i = 0; i < PARTICLE_COUNT; i += 1) {
       const layer = i % LAYERS;
       px[i] = random() * (width || 1);
       py[i] = random() * (height || 1);
@@ -152,20 +160,10 @@ export function startField(canvas, { theme, reducedMotion = false } = {}) {
       slowFrames -= 1;
     }
 
-    /* Live token reads — plain property lookups, no CSSOM access. */
-    const count = Math.min(MAX_PARTICLES, Math.round(theme.number('fieldCount')));
-    const speedScale = theme.number('fieldSpeed');
-    const bloomScale = theme.number('fieldBloom');
-    const throw_ = theme.number('parallax');
-    const accent = theme.rgb('accent');
-    const accent2 = theme.rgb('accent2');
-    const ink = theme.rgb('ink');
-
     context.clearRect(0, 0, width, height);
-    if (count <= 0) return;          // guard: nothing to draw, nothing to step
 
-    targetX = pointerNX * throw_;
-    targetY = pointerNY * (throw_ * 0.7);
+    targetX = pointerNX * PARALLAX_THROW;
+    targetY = pointerNY * (PARALLAX_THROW * 0.7);
 
     const forceX = (targetX - currentX) * STIFFNESS;
     const forceY = (targetY - currentY) * STIFFNESS;
@@ -176,11 +174,11 @@ export function startField(canvas, { theme, reducedMotion = false } = {}) {
 
     const idle = now - lastInteraction > IDLE_AFTER_MS;
 
-    for (let i = 0; i < count; i += 1) {
+    for (let i = 0; i < PARTICLE_COUNT; i += 1) {
       const layer = pz[i];
 
-      if (!idle && speedScale > 0) {
-        py[i] -= LAYER_SPEED[layer] * tick * 14 * speedScale;
+      if (!idle) {
+        py[i] -= LAYER_SPEED[layer] * tick * 14;
         if (py[i] < -4) {
           py[i] = height + 4;
           px[i] = random() * width;
@@ -196,15 +194,15 @@ export function startField(canvas, { theme, reducedMotion = false } = {}) {
 
       const twinkle = 0.72 + Math.sin(pt[i]) * 0.28;
       const alpha = pa[i] * twinkle;
-      const hue = phue[i] === 1 ? accent : phue[i] === 2 ? accent2 : ink;
+      const hue = phue[i] === 1 ? HUE_CYAN : phue[i] === 2 ? HUE_VIOLET : HUE_WHITE;
 
       context.beginPath();
       context.arc(x, y, pr[i], 0, Math.PI * 2);
       context.fillStyle = `rgba(${hue[0]}, ${hue[1]}, ${hue[2]}, ${alpha.toFixed(3)})`;
       context.fill();
 
-      if (bloomScale > 0 && layer === 0 && pr[i] > 1.9) {
-        context.shadowBlur = 8 * bloomScale;
+      if (layer === 0 && pr[i] > 1.9) {
+        context.shadowBlur = 8 * BLOOM;
         context.shadowColor =
           `rgba(${hue[0]}, ${hue[1]}, ${hue[2]}, ${(alpha * 0.8).toFixed(3)})`;
         context.fill();
@@ -268,7 +266,7 @@ export function startField(canvas, { theme, reducedMotion = false } = {}) {
  * slower. It is a CSS element rather than canvas because a blurred radial
  * gradient is far cheaper to composite than to paint.
  */
-export function driftNebula(node, { theme, reducedMotion = false } = {}) {
+export function driftNebula(node, { reducedMotion = false } = {}) {
   if (!node || reducedMotion) return { stop() {} };
 
   let running = true;
@@ -285,10 +283,7 @@ export function driftNebula(node, { theme, reducedMotion = false } = {}) {
     const delta = raw > MAX_DELTA_MS ? MAX_DELTA_MS : raw;
     const tick = (delta * TARGET_HZ) / 1000;
 
-    const speed = theme ? theme.number('fieldSpeed') : 1;
-    if (speed <= 0) return;
-
-    phase += 0.00042 * tick * speed;
+    phase += 0.00042 * tick;
     const x = Math.sin(phase) * 22;
     const y = Math.cos(phase * 0.76) * 16;
     const scale = 1 + Math.sin(phase * 0.5) * 0.015;

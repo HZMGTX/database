@@ -150,121 +150,6 @@ class TestMarkdownRenderer(unittest.TestCase):
         self.assertIn("<code>**not bold**</code>", html)
 
 
-class TestThemeEngine(unittest.TestCase):
-    """theme.js runs in node, so the token registry and its colour maths can
-    be tested without a browser."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.node = shutil.which("node")
-        if not cls.node:
-            raise unittest.SkipTest("node is not available")
-
-    def run_js(self, body):
-        script = (
-            "import('file://" + str(WEB_ROOT / "theme.js") + "').then(m => {"
-            + body + "}).catch(e => { console.error(e); process.exit(1); })"
-        )
-        result = subprocess.run(
-            [self.node, "--input-type=module", "-e", script],
-            capture_output=True, text=True, timeout=30)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        return result.stdout.strip()
-
-    def test_every_token_is_well_formed(self):
-        """A malformed token would render a broken control and write an
-        invalid custom property."""
-        out = self.run_js("""
-          const problems = [];
-          const seen = new Set();
-          for (const t of m.TOKENS) {
-            if (seen.has(t.key)) problems.push('duplicate ' + t.key);
-            seen.add(t.key);
-            if (!t.css || !t.css.startsWith('--')) problems.push('bad css var ' + t.key);
-            if (!t.label) problems.push('no label ' + t.key);
-            if (!m.GROUPS.some(g => g.id === t.group)) problems.push('bad group ' + t.key);
-            if (t.type === 'color' && !/^#[0-9a-f]{6}$/i.test(t.def))
-              problems.push('bad default ' + t.key);
-            if (t.type === 'range') {
-              if (!(t.def >= t.min && t.def <= t.max)) problems.push('def out of range ' + t.key);
-              if (!(t.step > 0)) problems.push('bad step ' + t.key);
-            }
-            if (t.type === 'select' && !t.options.some(o => o.value === t.def))
-              problems.push('default not an option ' + t.key);
-          }
-          process.stdout.write(problems.join(';'));
-        """)
-        self.assertEqual(out, "", f"malformed tokens: {out}")
-
-    def test_every_preset_references_real_tokens_within_range(self):
-        out = self.run_js("""
-          const keys = new Map(m.TOKENS.map(t => [t.key, t]));
-          const problems = [];
-          for (const [name, preset] of Object.entries(m.PRESETS))
-            for (const [key, value] of Object.entries(preset.values)) {
-              const t = keys.get(key);
-              if (!t) { problems.push(name + ' unknown ' + key); continue; }
-              if (t.type === 'color' && !/^#[0-9a-f]{6}$/i.test(value))
-                problems.push(name + ' bad colour ' + key + '=' + value);
-              if (t.type === 'range' && (value < t.min || value > t.max))
-                problems.push(name + ' out of range ' + key + '=' + value);
-            }
-          process.stdout.write(problems.join(';'));
-        """)
-        self.assertEqual(out, "", f"bad preset values: {out}")
-
-    def test_the_default_palette_meets_contrast_targets(self):
-        """Regression: the original dim ink measured 2.60:1 against the glass
-        panels, well under the 4.5 needed for text."""
-        out = self.run_js("""
-          const t = new m.Theme(null);
-          const failures = t.audit().filter(r => !r.pass)
-            .map(r => r.label + '=' + r.ratio.toFixed(2));
-          process.stdout.write(failures.join(';'));
-        """)
-        self.assertEqual(out, "", f"default palette fails contrast: {out}")
-
-    def test_the_light_preset_also_meets_contrast_targets(self):
-        out = self.run_js("""
-          const t = new m.Theme(null);
-          t.applyPreset('paper', { commit: false });
-          const failures = t.audit().filter(r => !r.pass)
-            .map(r => r.label + '=' + r.ratio.toFixed(2));
-          process.stdout.write(failures.join(';'));
-        """)
-        self.assertEqual(out, "", f"paper preset fails contrast: {out}")
-
-    def test_values_are_clamped_and_rejected_rather_than_trusted(self):
-        """Anything loaded from storage is attacker-adjacent and must not be
-        written to CSS unchecked."""
-        out = self.run_js("""
-          const t = new m.Theme(null);
-          t.set('accent', 'javascript:alert(1)', { commit: false, immediate: true });
-          t.set('radius', 9999, { commit: false, immediate: true });
-          t.set('blur', -50, { commit: false, immediate: true });
-          t.set('fontBody', 'nonsense', { commit: false, immediate: true });
-          process.stdout.write([t.get('accent'), t.get('radius'),
-                                t.get('blur'), t.get('fontBody')].join(','));
-        """)
-        self.assertEqual(out, "#00f8ff,28,0,system")
-
-    def test_contrast_maths_matches_wcag(self):
-        out = self.run_js("""
-          const white = m.contrast('#ffffff', '#000000');
-          const same = m.contrast('#777777', '#777777');
-          process.stdout.write(white.toFixed(2) + ',' + same.toFixed(2));
-        """)
-        self.assertEqual(out, "21.00,1.00")
-
-    def test_translucency_is_flattened_before_measuring(self):
-        """Measuring text against a see-through panel colour rather than what
-        it composites to would report a ratio nobody experiences."""
-        out = self.run_js("""
-          process.stdout.write(m.composite('#ffffff', 0.5, '#000000'));
-        """)
-        self.assertEqual(out, "#808080")
-
-
 @unittest.skipUnless(find_chrome(), "no Chromium available")
 class TestRenderedPage(WebTestCase):
     """Render the real page and assert on the DOM the browser built."""
@@ -311,19 +196,14 @@ class TestRenderedPage(WebTestCase):
         self.assertEqual(dom.count('class="hit"'), 1)
         self.assertIn("Findable thing", dom)
 
-    def test_every_token_gets_a_control(self):
-        """The panel is generated from the registry, so a token added to
-        theme.js must appear here with no second list to maintain."""
+    def test_the_interface_exposes_no_theme_controls(self):
+        """The visual design is fixed. There is nothing here to configure,
+        so nothing here should offer to."""
         dom = self.dump_dom()
-        tokens = dom.count('data-token="')
-        self.assertGreaterEqual(tokens, 50)
-        self.assertIn('data-preset="cosmic"', dom)
-        self.assertIn('cz-audit-row', dom)
-
-    def test_the_theme_is_applied_to_the_document(self):
-        dom = self.dump_dom()
-        self.assertIn('--c-accent', dom)
-        self.assertIn('--c-accent-rgb', dom)
+        for marker in ('data-token=', 'data-preset=', 'cz-audit-row',
+                       'customizer', 'type="color"', 'type="range"'):
+            with self.subTest(marker=marker):
+                self.assertNotIn(marker, dom)
 
     def test_no_horizontal_overflow_at_any_width(self):
         for n in range(6):

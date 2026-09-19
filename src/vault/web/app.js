@@ -10,8 +10,6 @@
 
 import { render, renderSnippet, escapeHtml } from './md.js';
 import { startField, driftNebula } from './field.js';
-import { theme } from './theme.js';
-import { Customizer } from './customizer.js';
 
 const API = '/api/v1';
 
@@ -28,7 +26,7 @@ const dom = {
   editorNote: el('editorNote'),
   fKind: el('fKind'), fTitle: el('fTitle'), fBody: el('fBody'), fTags: el('fTags'),
   fFacet: el('fFacet'),
-  help: el('help'), newItem: el('newItem'), customizer: el('customizer'),
+  help: el('help'), newItem: el('newItem'),
 };
 
 const state = {
@@ -585,22 +583,11 @@ document.addEventListener('keydown', (event) => {
 /* ── start ────────────────────────────────────────────────────────────── */
 
 (async function start() {
-  // The theme is applied before anything is drawn, so the first paint is
-  // already the user's palette rather than the fallback.
-  theme.load();
-
+  // Decorative depth planes, started before data lands so the interface has
+  // dimension from the first paint.
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  startField(el('field'), { theme, reducedMotion });
-  driftNebula(el('nebula'), { theme, reducedMotion });
-
-  const customizer = new Customizer(dom.customizer, { onToast: toast });
-  el('showTheme').addEventListener('click', () => customizer.toggle());
-  document.addEventListener('keydown', (event) => {
-    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
-    if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (event.key === 't') { event.preventDefault(); customizer.toggle(); }
-    else if (event.key === 'Escape' && customizer.open) customizer.hide();
-  });
+  startField(el('field'), { reducedMotion });
+  driftNebula(el('nebula'), { reducedMotion });
 
   try {
     state.schema = await api('/schema');
