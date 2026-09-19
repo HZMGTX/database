@@ -20,7 +20,7 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
-from vault import SCHEMA_VERSION, __version__, dates, ids, model, search
+from vault import SCHEMA_VERSION, __version__, dates, history, ids, model, search
 from vault.db import Database, sqlite_capabilities
 from vault.migrate import MigrationError, migrate
 from vault.paths import DB_ENV_VAR, Layout, resolve
@@ -742,6 +742,110 @@ def cmd_doctor(args) -> int:
     return EXIT_OK if not problems else EXIT_INTEGRITY
 
 
+def cmd_history(args) -> int:
+    db = _open_db(args)
+    try:
+        item = model.resolve(db, args.ref, include_trashed=True)
+        entries = history.history(db, item, limit=args.limit)
+    except model.ItemNotFound as exc:
+        _err(str(exc)); db.close(); return EXIT_NOT_FOUND
+    if args.json:
+        _emit_json([e._asdict() for e in entries])
+    else:
+        for entry in entries:
+            _out(f"  {STYLE.bold('rev ' + str(entry.rev)):>12}  "
+                 f"{STYLE.dim(entry.at)}  {entry.title}")
+        if entries:
+            _out()
+            _out(STYLE.dim(f"  vault diff {args.ref} {entries[-1].rev} {entries[0].rev}"))
+            _out(STYLE.dim(f"  vault revert {args.ref} <rev>"))
+    db.close()
+    return EXIT_OK
+
+
+def cmd_diff(args) -> int:
+    db = _open_db(args)
+    try:
+        item = model.resolve(db, args.ref, include_trashed=True)
+        text = history.diff_text(db, item, args.from_rev, args.to_rev)
+    except model.ItemNotFound as exc:
+        _err(str(exc)); db.close(); return EXIT_NOT_FOUND
+    if args.json:
+        _emit_json({"diff": text})
+    else:
+        for line in text.splitlines():
+            if line.startswith("+") and not line.startswith("+++"):
+                _out(STYLE.green(line))
+            elif line.startswith("-") and not line.startswith("---"):
+                _out(STYLE.red(line))
+            elif line.startswith("@@"):
+                _out(STYLE.cyan(line))
+            else:
+                _out(STYLE.dim(line))
+    db.close()
+    return EXIT_OK
+
+
+def cmd_revert(args) -> int:
+    db = _open_db(args)
+    try:
+        item = model.resolve(db, args.ref, include_trashed=True)
+        doc = history.revert(db, item, args.rev)
+    except model.ItemNotFound as exc:
+        _err(str(exc)); db.close(); return EXIT_NOT_FOUND
+    _emit_json(doc) if args.json else _out(
+        f"{STYLE.green('Reverted')} to rev {args.rev}; now at rev {doc['rev']}  {doc['title']}")
+    db.close()
+    return EXIT_OK
+
+
+def cmd_undo(args) -> int:
+    db = _open_db(args)
+    if args.list:
+        entries = history.undoable(db, limit=args.limit)
+        if args.json:
+            _emit_json(entries)
+        else:
+            for entry in entries:
+                _out(f"  {STYLE.dim(entry['txn_id'][:12])}  {entry['at']}  "
+                     f"{entry['rows']:>4} change(s)  {','.join(entry['ops'])}")
+        db.close()
+        return EXIT_OK
+    try:
+        result = history.undo(db, args.txn)
+    except history.UndoError as exc:
+        _err(str(exc)); db.close(); return EXIT_NOT_FOUND
+    if args.json:
+        _emit_json(result)
+    else:
+        _out(f"{STYLE.green('Undid')} {len(result['reversed'])} change(s).")
+        for line in result["reversed"][:10]:
+            _out(STYLE.dim(f"    {line}"))
+        if len(result["reversed"]) > 10:
+            _out(STYLE.dim(f"    ... and {len(result['reversed']) - 10} more"))
+        for line in result["skipped"]:
+            _out(STYLE.yellow(f"    skipped: {line}"))
+    db.close()
+    return EXIT_OK
+
+
+def cmd_compact_history(args) -> int:
+    db = _open_db(args)
+    result = history.compact(db, keep_days=args.keep_days,
+                             keep_per_item=args.keep_per_item, dry_run=not args.apply)
+    if args.json:
+        _emit_json(result)
+    else:
+        verb = "would remove" if result["dry_run"] else "removed"
+        _out(f"  {verb} {result['change_log']:,} audit rows older than {result['cutoff']}")
+        _out(f"  {verb} {result['revisions']:,} revisions beyond the most recent "
+             f"{args.keep_per_item} per item")
+        if result["dry_run"]:
+            _out(STYLE.dim("  nothing changed; pass --apply to do it"))
+    db.close()
+    return EXIT_OK
+
+
 def cmd_demo(args) -> int:
     """Load a small, realistic dataset so the tool is explorable immediately."""
     db = _open_db(args)
@@ -935,6 +1039,32 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(p); p.set_defaults(func=cmd_purge)
 
     # -- operations ---------------------------------------------------------
+    p = sub.add_parser("history", help="revisions of an item")
+    p.add_argument("ref"); p.add_argument("--limit", type=int, default=20)
+    _add_common(p); p.set_defaults(func=cmd_history)
+
+    p = sub.add_parser("diff", help="compare two revisions")
+    p.add_argument("ref")
+    p.add_argument("from_rev", type=int, metavar="FROM")
+    p.add_argument("to_rev", type=int, metavar="TO")
+    _add_common(p); p.set_defaults(func=cmd_diff)
+
+    p = sub.add_parser("revert", help="restore an item's content from a revision")
+    p.add_argument("ref"); p.add_argument("rev", type=int)
+    _add_common(p); p.set_defaults(func=cmd_revert)
+
+    p = sub.add_parser("undo", help="reverse the last change, however many items it touched")
+    p.add_argument("--txn", help="a specific transaction id")
+    p.add_argument("--list", action="store_true", help="show what could be undone")
+    p.add_argument("--limit", type=int, default=15)
+    _add_common(p); p.set_defaults(func=cmd_undo)
+
+    p = sub.add_parser("compact-history", help="trim old history (never automatic)")
+    p.add_argument("--keep-days", type=int, default=90, dest="keep_days")
+    p.add_argument("--keep-per-item", type=int, default=30, dest="keep_per_item")
+    p.add_argument("--apply", action="store_true", help="actually do it")
+    _add_common(p); p.set_defaults(func=cmd_compact_history)
+
     p = sub.add_parser("stats", help="what is in here")
     _add_common(p); p.set_defaults(func=cmd_stats)
 
