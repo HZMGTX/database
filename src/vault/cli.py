@@ -934,6 +934,56 @@ def cmd_compact_history(args) -> int:
     return EXIT_OK
 
 
+def cmd_connect(args) -> int:
+    from vault.connectors import FORMATS as CONNECTORS
+    from vault.connectors import vyrex as vyrex_connector
+
+    db = _open_db(args)
+    handler = CONNECTORS.get(args.source)
+    if handler is None:
+        _err(f"no connector for {args.source!r}. Available: {', '.join(sorted(CONNECTORS))}")
+        db.close()
+        return EXIT_USAGE
+
+    if args.describe:
+        try:
+            described = vyrex_connector.describe(args.db_path)
+        except FileNotFoundError as exc:
+            _err(str(exc)); db.close(); return EXIT_NOT_FOUND
+        if args.json:
+            _emit_json(described)
+        else:
+            _out(f"  {args.db_path}")
+            _out(STYLE.dim(f"  {len(described['tables'])} tables, "
+                           f"{described['total_rows']:,} rows"))
+            for table in described["tables"]:
+                mark = STYLE.dim(" (skipped: high-volume log)") if table["noisy"] else ""
+                _out(f"    {table['name']:30} {table['rows']:>8,} rows{mark}")
+        db.close()
+        return EXIT_OK
+
+    try:
+        result = handler(db, args.db_path, dry_run=args.dry_run,
+                         include_noisy=args.include_logs,
+                         max_rows_per_table=args.max_rows,
+                         incremental=not args.full)
+    except FileNotFoundError as exc:
+        _err(str(exc)); db.close(); return EXIT_NOT_FOUND
+
+    if args.json:
+        _emit_json(result._asdict())
+    else:
+        verb = "Would read" if result.dry_run else "Read"
+        _out(f"{STYLE.green(verb)} {result.created:,} row(s) from {args.source}")
+        _out(STYLE.dim(f"  {result.skipped:,} skipped, {len(result.errors)} error(s)"))
+        _out(STYLE.dim("  the source database was opened read-only and not modified"))
+        if not result.dry_run and result.created:
+            _out(STYLE.dim("  run this again after the bot has been busy; "
+                           "only new rows are read"))
+    db.close()
+    return EXIT_OK
+
+
 def cmd_export(args) -> int:
     from pathlib import Path as _Path
     from vault import exporters
@@ -1524,6 +1574,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--keep-per-item", type=int, default=30, dest="keep_per_item")
     p.add_argument("--apply", action="store_true", help="actually do it")
     _add_common(p); p.set_defaults(func=cmd_compact_history)
+
+    p = sub.add_parser("connect", help="read another application's database (read-only)")
+    p.add_argument("source", choices=["vyrex"])
+    p.add_argument("--db-path", dest="db_path", required=True,
+                   metavar="PATH", help="the other application's database file")
+    p.add_argument("--describe", action="store_true", help="show what is in it and stop")
+    p.add_argument("--dry-run", action="store_true", dest="dry_run")
+    p.add_argument("--include-logs", action="store_true",
+                   help="also read high-volume analytics tables")
+    p.add_argument("--full", action="store_true",
+                   help="re-read everything instead of only new rows")
+    p.add_argument("--max-rows", type=int, default=20000, dest="max_rows",
+                   metavar="N", help="cap per table")
+    _add_common(p); p.set_defaults(func=cmd_connect)
 
     p = sub.add_parser("export", help="write everything out")
     p.add_argument("--format", default="jsonl",

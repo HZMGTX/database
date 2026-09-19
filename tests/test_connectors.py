@@ -1,0 +1,162 @@
+"""Reading another application's database.
+
+These run against a stand-in built from VYREX's own applySchema.js, because
+the real vyrex.db is gitignored and so is never present in a checkout. That
+is a better fixture anyway: it is built from the same file the bot builds
+from, and it can be seeded to any size.
+"""
+
+import sqlite3
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from support import VaultTestCase  # noqa: E402
+
+from vault import search  # noqa: E402
+from vault.connectors import vyrex  # noqa: E402
+from vault.db import connect_readonly  # noqa: E402
+
+SCHEMA_JS = Path("/home/user/vyrex/src/database/applySchema.js")
+
+
+@unittest.skipUnless(SCHEMA_JS.is_file(), "VYREX checkout not present")
+class TestVyrexConnector(VaultTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.source = self._tmp / "vyrex.db"
+        self.built = vyrex.synthesize_from_schema(SCHEMA_JS, self.source, rows_per_table=6)
+
+    def test_the_fixture_reflects_the_real_schema(self):
+        self.assertGreater(len(self.built), 25,
+                           "applySchema.js should yield a substantial schema")
+
+    def test_describe_reports_tables_without_importing(self):
+        described = vyrex.describe(self.source)
+        self.assertGreater(len(described["tables"]), 25)
+        self.assertGreater(described["total_rows"], 100)
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM item").fetchone()[0], 0)
+
+    def test_rows_become_searchable_items(self):
+        result = vyrex.connect(self.db, self.source)
+        self.assertGreater(result.created, 100)
+        self.assertEqual(len(result.errors), 0)
+        self.assertGreater(
+            len(search.search(self.db, "kind:vyrex_users").hits), 0)
+
+    def test_row_values_are_findable_as_free_text(self):
+        """Properties are indexed for field queries, but `attr` is not a
+        full-text column. Someone searching for a half-remembered username is
+        doing a word search, so text values go into the index too."""
+        vyrex.connect(self.db, self.source)
+        self.assertGreater(len(search.search(self.db, "username-3").hits), 0)
+
+    def test_high_volume_log_tables_are_skipped_by_default(self):
+        result = vyrex.connect(self.db, self.source)
+        self.assertGreater(result.skipped, 0)
+        self.assertEqual(
+            len(search.search(self.db, "kind:vyrex_command_analytics").hits), 0)
+
+    def test_a_second_run_reads_nothing_new(self):
+        vyrex.connect(self.db, self.source)
+        self.assertEqual(vyrex.connect(self.db, self.source).created, 0)
+
+    def test_only_new_rows_are_read_after_the_source_changes(self):
+        vyrex.connect(self.db, self.source)
+        writer = sqlite3.connect(self.source)
+        try:
+            columns = [(r[1], (r[2] or "TEXT").upper())
+                       for r in writer.execute("PRAGMA table_info(bounties)")]
+            values = [4242 if "INT" in t else (1.5 if "REAL" in t else f"{n}-added")
+                      for n, t in columns]
+            writer.execute(
+                f"INSERT INTO bounties ({','.join(n for n, _ in columns)}) "
+                f"VALUES ({','.join('?' * len(columns))})", values)
+            writer.commit()
+        finally:
+            writer.close()
+
+        self.assertEqual(vyrex.connect(self.db, self.source).created, 1)
+
+    def test_the_source_is_opened_read_only(self):
+        """The guarantee the whole connector rests on. SQLite enforces this,
+        so a bug in Vault cannot corrupt a live bot's data."""
+        reader = connect_readonly(self.source)
+        try:
+            for statement in ("INSERT INTO bounties DEFAULT VALUES",
+                              "UPDATE bounties SET reward = 0",
+                              "DROP TABLE bounties",
+                              "DELETE FROM users"):
+                with self.subTest(sql=statement), self.assertRaises(sqlite3.OperationalError):
+                    reader.execute(statement)
+        finally:
+            reader.close()
+
+    def test_the_source_is_unchanged_after_a_full_ingest(self):
+        before = {}
+        probe = sqlite3.connect(self.source)
+        try:
+            for (name,) in probe.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"):
+                before[name] = probe.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0]
+        finally:
+            probe.close()
+
+        vyrex.connect(self.db, self.source, include_noisy=True)
+
+        after = {}
+        probe = sqlite3.connect(self.source)
+        try:
+            for (name,) in probe.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"):
+                after[name] = probe.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0]
+            self.assertEqual(probe.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+        finally:
+            probe.close()
+        self.assertEqual(before, after)
+
+    def test_a_dry_run_writes_nothing(self):
+        result = vyrex.connect(self.db, self.source, dry_run=True)
+        self.assertTrue(result.dry_run)
+        self.assertGreater(result.created, 0)
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM item").fetchone()[0], 0)
+
+    def test_a_missing_source_explains_where_it_lives(self):
+        with self.assertRaises(FileNotFoundError) as ctx:
+            vyrex.connect(self.db, self._tmp / "not-there.db")
+        self.assertIn("gitignored", str(ctx.exception))
+
+    def test_vault_stays_sound_after_ingest(self):
+        vyrex.connect(self.db, self.source)
+        self.assert_all_integrity_clean()
+
+
+class TestClientModulesExist(unittest.TestCase):
+    """The clients ship in this repository because it is the only one set up
+    for writing; these assert they are present and syntactically plausible."""
+
+    ROOT = Path(__file__).resolve().parent.parent / "clients"
+
+    def test_both_clients_are_present(self):
+        self.assertTrue((self.ROOT / "vyrex" / "vaultClient.js").is_file())
+        self.assertTrue((self.ROOT / "genesis" / "vault-client.ts").is_file())
+        self.assertTrue((self.ROOT / "README.md").is_file())
+
+    def test_clients_fail_soft_rather_than_throwing(self):
+        """A sidecar must not be able to take down the application it sits
+        beside, so the default path swallows errors."""
+        js = (self.ROOT / "vyrex" / "vaultClient.js").read_text()
+        self.assertIn("return [];", js)
+        self.assertIn("return null;", js)
+
+    def test_clients_send_an_idempotency_key(self):
+        for name in ("vyrex/vaultClient.js", "genesis/vault-client.ts"):
+            with self.subTest(client=name):
+                self.assertIn("Idempotency-Key", (self.ROOT / name).read_text())
+
+
+if __name__ == "__main__":
+    unittest.main()

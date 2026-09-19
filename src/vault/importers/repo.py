@@ -151,9 +151,15 @@ def _ingest_structured(db: Database, batch: Batch, path: Path, relative: Path,
                 batch.record("created", None, f"{relative}:{category}", title)
                 continue
             try:
+                # Text values go into the full-text column as well as the
+                # typed projection: `rarity:Legendary` is a field query, but
+                # someone searching plain "Legendary" expects a hit too.
+                searchable = [str(v) for v in props.values()
+                              if isinstance(v, str) and 1 < len(v) <= 120][:40]
                 doc = model.create(
                     db, kind=kind, title=title, props=props,
-                    tags=[f"repo/{repo_name}", f"data/{kind}"])
+                    tags=[f"repo/{repo_name}", f"data/{kind}"],
+                    extra_search=searchable)
                 batch.record("created", doc["uid"], f"{relative}:{category}", title)
             except Exception as exc:                        # noqa: BLE001
                 batch.fail(f"{relative}:{category}: {exc}")
