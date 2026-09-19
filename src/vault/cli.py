@@ -934,6 +934,48 @@ def cmd_compact_history(args) -> int:
     return EXIT_OK
 
 
+def cmd_serve(args) -> int:
+    from vault.httpd import Server
+
+    db = _open_db(args)
+    logger = (lambda line: _err(line)) if args.verbose else None
+    server = Server(db, host=args.host, port=args.port, token=args.token,
+                    lan=args.lan, log=logger)
+    try:
+        server.start()
+    except OSError as exc:
+        _err(f"could not listen on {args.host}:{args.port}: {exc}")
+        if getattr(exc, "errno", None) == 98:
+            _err(f"  something is already using port {args.port}. "
+                 f"Try --port {args.port + 1}.")
+        db.close()
+        return EXIT_REFUSED
+
+    url = server.base_url
+    _out(f"{STYLE.bold('Vault')} is serving at {STYLE.cyan(url)}")
+    if server.lan:
+        _out(STYLE.yellow("  Reachable from your local network."))
+        _out(STYLE.dim("  The token in that URL is the only thing protecting it. "
+                       "Anyone on this network who has it can read and write everything."))
+    else:
+        _out(STYLE.dim("  Bound to 127.0.0.1, so only this machine can reach it."))
+    _out(STYLE.dim("  Ctrl-C to stop."))
+
+    if args.open:
+        import webbrowser
+        webbrowser.open(url)
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        _out()
+        _out(STYLE.dim("  stopped"))
+    finally:
+        server.stop()
+        db.close()
+    return EXIT_OK
+
+
 def cmd_demo(args) -> int:
     """Load a small, realistic dataset so the tool is explorable immediately."""
     db = _open_db(args)
@@ -1135,6 +1177,16 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(p); p.set_defaults(func=cmd_purge)
 
     # -- operations ---------------------------------------------------------
+    p = sub.add_parser("serve", help="run the web UI and REST API")
+    p.add_argument("--port", type=int, default=8787)
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--lan", action="store_true",
+                   help="reachable from the local network; generates a token")
+    p.add_argument("--token", help="require this bearer token")
+    p.add_argument("--open", action="store_true", help="open a browser")
+    p.add_argument("--verbose", action="store_true", help="log every request")
+    _add_common(p); p.set_defaults(func=cmd_serve)
+
     p = sub.add_parser("extract", help="read text from stored files not yet indexed")
     p.add_argument("--limit", type=int, default=500)
     _add_common(p); p.set_defaults(func=cmd_extract)
