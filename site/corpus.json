@@ -1,0 +1,1033 @@
+{
+ "_about": "A synthetic showcase corpus for the public demo. Every person, client, project and figure here is invented. No real data from any repository or personal vault appears in this file, which is what makes it safe to publish.",
+ "persona": "Wren Okafor runs Halcyon Studio, a four-person design practice.",
+ "custom_kinds": [
+  {
+   "name": "book",
+   "label": "Book",
+   "plural": "Books",
+   "icon": "note"
+  }
+ ],
+ "custom_fields": [
+  {
+   "kind": "book",
+   "key": "author",
+   "label": "Author",
+   "type": "text"
+  },
+  {
+   "kind": "book",
+   "key": "pages",
+   "label": "Pages",
+   "type": "number"
+  },
+  {
+   "kind": "book",
+   "key": "year",
+   "label": "Year",
+   "type": "number"
+  },
+  {
+   "kind": "book",
+   "key": "rating",
+   "label": "Rating",
+   "type": "number"
+  },
+  {
+   "kind": "book",
+   "key": "shelf",
+   "label": "Shelf",
+   "type": "text"
+  }
+ ],
+ "items": [
+  {
+   "id": "n-kickoff",
+   "kind": "note",
+   "title": "Meridian rebrand — kickoff notes",
+   "pinned": true,
+   "tags": [
+    "clients/meridian",
+    "work/projects"
+   ],
+   "body": "Meridian want the whole identity reconsidered, not a logo refresh.\n\nWhat came out of the room:\n- The current wordmark tests badly at small sizes. Everyone in the room independently called it \"muddy\".\n- Their audience skews technical. They want to read as precise rather than friendly.\n- Budget is firm at 48000 and the date is not movable: the new site goes live alongside their annual report.\n\nOpen question nobody could answer: who signs off. Adaora thinks it is the board, Tomas thinks it is him. Until that is settled we are designing for an audience of unknown size.",
+   "props": {
+    "budget": 48000,
+    "client": "Meridian",
+    "phase": "discovery"
+   },
+   "links": [
+    [
+     "mentions",
+     "p-adaora"
+    ],
+    [
+     "mentions",
+     "p-tomas"
+    ],
+    [
+     "relates_to",
+     "t-wordmark"
+    ]
+   ]
+  },
+  {
+   "id": "n-typography",
+   "kind": "note",
+   "title": "Typography that survives being shrunk",
+   "tags": [
+    "craft/typography",
+    "reference"
+   ],
+   "body": "Collected from four years of redrawing marks that looked fine at 200px and fell apart at 16.\n\nThe counters go first. An 'e' with a tight counter fills in before anything else breaks, which is why a logo that reads as a blur at favicon size is almost always a counter problem and almost never a weight problem.\n\nStroke contrast is the second failure. High contrast reads as elegant on a poster and as broken on a phone, because the thin strokes drop below one pixel and the letter starts missing parts of itself.\n\nThe test that actually works: render at 16px, screenshot, blur by two pixels, and see whether you can still tell the word. If you cannot, no amount of hinting will save it.",
+   "links": [
+    [
+     "relates_to",
+     "n-kickoff"
+    ]
+   ]
+  },
+  {
+   "id": "n-standup-0904",
+   "kind": "note",
+   "title": "Studio standup — week 36",
+   "tags": [
+    "work/studio"
+   ],
+   "body": "Short one. Halcyon is at capacity until the Meridian delivery clears.\n\nSam is blocked on the illustration set because the brief never specified whether these run on dark backgrounds. That is a fifteen minute answer that has cost four days.\n\nWe agreed to stop taking discovery calls until October. Three of the last five went nowhere and each one cost most of a day."
+  },
+  {
+   "id": "n-pricing",
+   "kind": "note",
+   "title": "Why we stopped quoting hourly",
+   "tags": [
+    "work/business"
+   ],
+   "body": "Hourly billing punishes the thing we are best at. When a problem that would have taken a junior three weeks takes me an afternoon because I have solved its shape before, hourly billing charges the client less for the better outcome.\n\nSince switching to fixed scope the average project value went from 11200 to 26500 and the arguments about timesheets stopped entirely.\n\nThe honest cost: we now have to be much better at saying what is out of scope, in writing, before anything starts. Two projects went badly in the first year because we were vague and then resentful.",
+   "props": {
+    "average_before": 11200,
+    "average_after": 26500
+   }
+  },
+  {
+   "id": "n-colour",
+   "kind": "note",
+   "title": "Contrast is not a checkbox",
+   "tags": [
+    "craft/accessibility",
+    "reference"
+   ],
+   "body": "A ratio of 4.5:1 is the floor for body text, not the target. Hitting it exactly means the text is legible to someone with normal vision in a quiet room and marginal for everyone else.\n\nThe measurement people get wrong: translucent panels. If your panel is rgba over a dark ground, the contrast is against the *flattened* colour, not against the token you typed. A colour that measures 5.8:1 against #0f061c can be 2.6:1 against what the eye actually receives once the panel is composited.\n\nFlatten first, then measure. Every time."
+  },
+  {
+   "id": "n-recipe-bread",
+   "kind": "note",
+   "title": "Overnight bread, no starter",
+   "tags": [
+    "home/cooking"
+   ],
+   "body": "500g strong white flour, 380g water, 10g salt, 2g instant yeast.\n\nMix until no dry flour remains, cover, leave on the counter for twelve to eighteen hours. The long cold ferment does what kneading does, which is why this works without any technique at all.\n\nTip out, fold in thirds twice, rest thirty minutes, bake in a covered pot at 230C for thirty minutes covered and fifteen uncovered.\n\nThe only part that matters: the pot must be preheated. Cold pot gives a pale flat loaf and no amount of extra time fixes it.",
+   "props": {
+    "servings": 8,
+    "hours": 18
+   }
+  },
+  {
+   "id": "n-travel-lisbon",
+   "kind": "note",
+   "title": "Lisbon, notes for next time",
+   "tags": [
+    "home/travel"
+   ],
+   "body": "Stay east of the centre. Alfama is beautiful and completely impassable with a suitcase.\n\nThe conference venue is a forty minute walk from anywhere you want to eat, which nobody mentions.\n\nBook the Gulbenkian in advance. Walked up twice and got turned away twice."
+  },
+  {
+   "id": "n-retro",
+   "kind": "note",
+   "title": "Post-mortem: the Northwind site",
+   "tags": [
+    "work/projects",
+    "clients/northwind"
+   ],
+   "body": "Delivered six weeks late and roughly 9000 over. Worth writing down why while it still stings.\n\nThe cause was not the design work, which was done on time. It was that we agreed to \"a few content pages\" without counting them. A few turned out to be forty-one, each with its own layout argument.\n\nWhat we change: scope is counted, in a spreadsheet, before a number is quoted. If the client cannot tell us how many pages, the contract prices a page and we bill per page.\n\nThe part I got wrong personally: I knew by week three and said nothing until week seven because I did not want the conversation.",
+   "props": {
+    "overrun": 9000,
+    "weeks_late": 6
+   },
+   "links": [
+    [
+     "relates_to",
+     "n-pricing"
+    ],
+    [
+     "mentions",
+     "p-ines"
+    ]
+   ]
+  },
+  {
+   "id": "n-grid",
+   "kind": "note",
+   "title": "The four-pixel module",
+   "tags": [
+    "craft/layout",
+    "reference"
+   ],
+   "body": "Every measurement in the studio system is a multiple of four. Not because four is magic, but because a single module removes an entire category of decision.\n\nBefore: every gap was an argument. 14 or 16? 22 or 24? The answers were arbitrary and nobody could defend one over another, so the arguments never resolved.\n\nAfter: 12, 16, 20, 24, 32, 48. Six values, and the question becomes which of six rather than which of infinity.\n\nThe cost is that occasionally 18 really is right and you have to take 16 or 20 instead. Worth it."
+  },
+  {
+   "id": "n-reading-2026",
+   "kind": "note",
+   "title": "What I actually finished this year",
+   "tags": [
+    "home/reading"
+   ],
+   "body": "Eleven books started, six finished. The pattern is obvious in hindsight: everything I finished I read in physical form, everything I abandoned was on a screen.\n\nNot making a principle out of it. Just noting it."
+  },
+  {
+   "id": "n-invoice-process",
+   "kind": "note",
+   "title": "Invoicing, the boring version that works",
+   "tags": [
+    "work/business"
+   ],
+   "body": "Invoice on the first of the month for everything delivered in the previous month. Not on delivery, not on milestones, not when you remember.\n\nTerms are fourteen days and the late fee is real and has been charged twice. Both clients paid on time forever afterwards.\n\nThe single largest improvement to cash flow was not chasing faster. It was invoicing on a schedule so predictable that the client's finance team could plan around it."
+  },
+  {
+   "id": "n-darkmode",
+   "kind": "note",
+   "title": "Dark interfaces, what I keep relearning",
+   "tags": [
+    "craft/colour",
+    "reference"
+   ],
+   "body": "Pure black is wrong. #000 against white text produces halation — the text appears to vibrate — and on OLED the transition to any lit pixel is abrupt enough to read as a hard edge.\n\nA near-black with a colour cast reads as intentional. #010006 has a violet lean so slight you cannot name it, but a wash of violet over it looks like part of the same surface rather than a coloured sheet laid on grey.\n\nHeavy borders are the other tell. On a dark interface a 1px #333 border around every panel reads as cheap immediately. Distinguish panels by luminance and a hairline, never by a border you can see from across the room.\n\nAnd saturated colour is signal, never surface. Neon on three percent of the pixels lands. Neon on thirty percent is a headache."
+  },
+  {
+   "id": "n-onboarding",
+   "kind": "note",
+   "title": "First week checklist for a new designer",
+   "tags": [
+    "work/studio"
+   ],
+   "body": "Day one is accounts and the studio system, nothing else. Do not give anyone client work on day one; they will produce something to prove themselves and it will be wrong in ways that are expensive to unpick.\n\nDay two to four: redraw an existing project from the brief without looking at what we shipped. Then compare. This teaches the house standard faster than any document.\n\nDay five: a real task, small, with a deadline that does not matter."
+  },
+  {
+   "id": "n-meridian-research",
+   "kind": "note",
+   "title": "Meridian — competitor audit",
+   "tags": [
+    "clients/meridian",
+    "work/research"
+   ],
+   "body": "Nine competitors reviewed. Seven use a geometric sans, six use blue, five use an abstract mark built from overlapping shapes.\n\nThe category has converged to the point of being indistinguishable. Covered the logos and asked four people to match them to the companies; best score was two out of nine.\n\nThat is the opportunity and I will be arguing for it: almost anything with a point of view will be distinguishable here, because the bar is on the floor.",
+   "props": {
+    "competitors": 9,
+    "budget": 48000
+   },
+   "links": [
+    [
+     "relates_to",
+     "n-kickoff"
+    ]
+   ]
+  },
+  {
+   "id": "n-backup",
+   "kind": "note",
+   "title": "Studio backup policy, such as it is",
+   "tags": [
+    "work/studio",
+    "reference"
+   ],
+   "body": "Working files on the studio drive, synced. Archive to the external disk on the first of the month. Off-site copy quarterly, which in practice means when I remember, which in practice means twice a year.\n\nThis is not good enough and I know it. The failure mode that worries me is not disk death, it is silent corruption that syncs everywhere before anyone notices.\n\nWhat would actually fix it: versioned snapshots that are not writable by the machine that made them."
+  },
+  {
+   "id": "n-saying-no",
+   "kind": "note",
+   "title": "The projects I regret taking",
+   "tags": [
+    "work/business"
+   ],
+   "body": "All four share a tell. In each case the first conversation contained the phrase \"we know roughly what we want, we just need someone to make it\".\n\nThat sentence means the thinking has not been done and will now be done by us, unpaid, while being described as execution.\n\nThe ones that went well started with a question, not a specification."
+  },
+  {
+   "id": "n-fonts-licence",
+   "kind": "note",
+   "title": "Font licensing, in plain terms",
+   "tags": [
+    "work/business",
+    "craft/typography"
+   ],
+   "body": "Desktop licence covers making the artwork. Web licence covers serving it. App licence covers embedding it. These are three purchases and clients consistently assume they are one.\n\nPut the licence cost in the quote as a separate line. When it is buried in a total it looks like padding; when it is a line item with the foundry named, nobody has ever questioned it.\n\nMeridian's chosen family runs 1800 for desktop and web at their traffic tier.",
+   "props": {
+    "licence_cost": 1800
+   }
+  },
+  {
+   "id": "t-wordmark",
+   "kind": "task",
+   "title": "Redraw the Meridian wordmark at small sizes",
+   "tags": [
+    "clients/meridian",
+    "work/projects"
+   ],
+   "body": "Three weights, tested at 16px, 24px and favicon. Blur test on each.",
+   "facet": {
+    "status": "doing",
+    "priority": 4,
+    "estimate_minutes": 480,
+    "due": "2026-09-26T17:00:00"
+   },
+   "props": {
+    "budget": 48000
+   }
+  },
+  {
+   "id": "t-illustration",
+   "kind": "task",
+   "title": "Unblock Sam's illustration brief",
+   "tags": [
+    "work/studio",
+    "clients/meridian"
+   ],
+   "body": "Answer the dark-background question. Fifteen minutes of work that has cost four days.",
+   "facet": {
+    "status": "blocked",
+    "priority": 5,
+    "estimate_minutes": 15,
+    "due": "2026-09-22T12:00:00"
+   },
+   "links": [
+    [
+     "mentions",
+     "p-sam"
+    ]
+   ]
+  },
+  {
+   "id": "t-invoice-sept",
+   "kind": "task",
+   "title": "Send September invoices",
+   "tags": [
+    "work/business"
+   ],
+   "facet": {
+    "status": "todo",
+    "priority": 3,
+    "estimate_minutes": 60,
+    "due": "2026-10-01T09:00:00"
+   }
+  },
+  {
+   "id": "t-signoff",
+   "kind": "task",
+   "title": "Establish who signs off at Meridian",
+   "tags": [
+    "clients/meridian"
+   ],
+   "body": "Adaora says the board. Tomas says Tomas. Until this is answered we are guessing.",
+   "facet": {
+    "status": "todo",
+    "priority": 5,
+    "due": "2026-09-23T17:00:00"
+   },
+   "links": [
+    [
+     "mentions",
+     "p-adaora"
+    ],
+    [
+     "mentions",
+     "p-tomas"
+    ],
+    [
+     "relates_to",
+     "n-kickoff"
+    ]
+   ]
+  },
+  {
+   "id": "t-tax",
+   "kind": "task",
+   "title": "File the quarterly return",
+   "tags": [
+    "work/business",
+    "admin"
+   ],
+   "facet": {
+    "status": "todo",
+    "priority": 4,
+    "estimate_minutes": 180,
+    "due": "2026-10-07T17:00:00"
+   },
+   "props": {
+    "amount": 7400
+   }
+  },
+  {
+   "id": "t-portfolio",
+   "kind": "task",
+   "title": "Put Northwind in the portfolio anyway",
+   "tags": [
+    "work/studio"
+   ],
+   "body": "It ran late and over, and the work is still the best thing we shipped this year.",
+   "facet": {
+    "status": "todo",
+    "priority": 1,
+    "estimate_minutes": 120
+   },
+   "links": [
+    [
+     "relates_to",
+     "n-retro"
+    ]
+   ]
+  },
+  {
+   "id": "t-insurance",
+   "kind": "task",
+   "title": "Renew professional indemnity",
+   "tags": [
+    "admin"
+   ],
+   "facet": {
+    "status": "todo",
+    "priority": 3,
+    "due": "2026-11-14T17:00:00"
+   },
+   "props": {
+    "amount": 1250
+   }
+  },
+  {
+   "id": "t-hire",
+   "kind": "task",
+   "title": "Decide whether to hire a fourth designer",
+   "tags": [
+    "work/studio",
+    "work/business"
+   ],
+   "body": "We are turning down work. That is either a signal to hire or a signal to raise prices, and I genuinely do not know which.",
+   "facet": {
+    "status": "todo",
+    "priority": 2,
+    "due": "2026-10-31T17:00:00"
+   },
+   "props": {
+    "salary_estimate": 52000
+   }
+  },
+  {
+   "id": "t-drive",
+   "kind": "task",
+   "title": "Buy the off-site backup drive",
+   "tags": [
+    "work/studio",
+    "admin"
+   ],
+   "facet": {
+    "status": "todo",
+    "priority": 2,
+    "due": "2026-09-30T17:00:00"
+   },
+   "props": {
+    "amount": 210
+   },
+   "links": [
+    [
+     "relates_to",
+     "n-backup"
+    ]
+   ]
+  },
+  {
+   "id": "t-northwind-final",
+   "kind": "task",
+   "title": "Close out the Northwind contract",
+   "tags": [
+    "clients/northwind"
+   ],
+   "facet": {
+    "status": "done",
+    "priority": 3,
+    "due": "2026-09-05T17:00:00"
+   }
+  },
+  {
+   "id": "t-studio-system",
+   "kind": "task",
+   "title": "Write the studio system down",
+   "tags": [
+    "work/studio",
+    "craft/layout"
+   ],
+   "body": "It exists in my head and in four years of files. That is not a system, that is a habit.",
+   "facet": {
+    "status": "doing",
+    "priority": 3,
+    "estimate_minutes": 960,
+    "due": "2026-10-15T17:00:00"
+   },
+   "links": [
+    [
+     "relates_to",
+     "n-grid"
+    ]
+   ]
+  },
+  {
+   "id": "t-cancelled-rfp",
+   "kind": "task",
+   "title": "Respond to the Castleford RFP",
+   "tags": [
+    "work/business"
+   ],
+   "body": "Withdrawn. Sixty pages of requirements for a fixed fee of 6000.",
+   "facet": {
+    "status": "cancelled",
+    "priority": 1
+   },
+   "props": {
+    "amount": 6000
+   }
+  },
+  {
+   "id": "e-meridian-review",
+   "kind": "event",
+   "title": "Meridian — first round review",
+   "tags": [
+    "clients/meridian"
+   ],
+   "body": "Three directions. Do not show a favourite.",
+   "facet": {
+    "location": "Meridian, 4th floor",
+    "starts": "2026-09-29T10:00:00",
+    "ends": "2026-09-29T11:30:00"
+   },
+   "links": [
+    [
+     "mentions",
+     "p-adaora"
+    ]
+   ]
+  },
+  {
+   "id": "e-studio-lunch",
+   "kind": "event",
+   "title": "Studio lunch",
+   "tags": [
+    "work/studio"
+   ],
+   "facet": {
+    "location": "The Anchor",
+    "starts": "2026-09-25T12:30:00",
+    "ends": "2026-09-25T14:00:00"
+   }
+  },
+  {
+   "id": "e-conf",
+   "kind": "event",
+   "title": "Typographics Lisbon",
+   "tags": [
+    "craft/typography",
+    "home/travel"
+   ],
+   "body": "Three days. The workshop track is the reason to go; the keynotes are all online afterwards.",
+   "facet": {
+    "all_day": 1,
+    "location": "Lisbon",
+    "starts": "2026-11-12",
+    "ends": "2026-11-14"
+   },
+   "links": [
+    [
+     "relates_to",
+     "n-travel-lisbon"
+    ]
+   ]
+  },
+  {
+   "id": "e-birthday",
+   "kind": "event",
+   "title": "Ines's birthday",
+   "tags": [
+    "home"
+   ],
+   "facet": {
+    "all_day": 1,
+    "starts": "2026-10-03"
+   },
+   "links": [
+    [
+     "mentions",
+     "p-ines"
+    ]
+   ]
+  },
+  {
+   "id": "e-quarterly",
+   "kind": "event",
+   "title": "Quarterly numbers, alone, with coffee",
+   "tags": [
+    "work/business"
+   ],
+   "facet": {
+    "starts": "2026-10-02T08:00:00",
+    "ends": "2026-10-02T10:00:00"
+   }
+  },
+  {
+   "id": "l-bm25",
+   "kind": "link",
+   "title": "Understanding BM25 ranking",
+   "tags": [
+    "reference",
+    "craft/search"
+   ],
+   "body": "The clearest explanation of why term frequency saturates rather than growing linearly.",
+   "facet": {
+    "url": "https://example.org/bm25-explained"
+   }
+  },
+  {
+   "id": "l-sqlite-fts",
+   "kind": "link",
+   "title": "SQLite FTS5 documentation",
+   "tags": [
+    "reference",
+    "craft/search"
+   ],
+   "facet": {
+    "url": "https://www.sqlite.org/fts5.html"
+   }
+  },
+  {
+   "id": "l-type-scale",
+   "kind": "link",
+   "title": "A modular scale calculator",
+   "tags": [
+    "craft/typography",
+    "reference"
+   ],
+   "facet": {
+    "url": "https://example.org/modular-scale"
+   }
+  },
+  {
+   "id": "l-contrast",
+   "kind": "link",
+   "title": "WCAG contrast, the readable version",
+   "tags": [
+    "craft/accessibility",
+    "reference"
+   ],
+   "facet": {
+    "url": "https://example.org/wcag-contrast-plain"
+   },
+   "links": [
+    [
+     "relates_to",
+     "n-colour"
+    ]
+   ]
+  },
+  {
+   "id": "l-foundry",
+   "kind": "link",
+   "title": "The foundry Meridian chose",
+   "tags": [
+    "clients/meridian",
+    "craft/typography"
+   ],
+   "facet": {
+    "url": "https://example.org/foundry/catalogue"
+   },
+   "props": {
+    "licence_cost": 1800
+   }
+  },
+  {
+   "id": "l-invoices",
+   "kind": "link",
+   "title": "Late payment legislation, summarised",
+   "tags": [
+    "work/business",
+    "reference"
+   ],
+   "facet": {
+    "url": "https://example.org/late-payment"
+   }
+  },
+  {
+   "id": "p-adaora",
+   "kind": "person",
+   "title": "Adaora Nwosu",
+   "tags": [
+    "clients/meridian"
+   ],
+   "body": "Marketing director at Meridian. Decisive, reads everything, will tell you exactly what she thinks in the room rather than in an email three days later.",
+   "facet": {
+    "given_name": "Adaora",
+    "family_name": "Nwosu",
+    "org": "Meridian",
+    "role": "Marketing Director"
+   },
+   "props": {
+    "email": "adaora@example.org"
+   }
+  },
+  {
+   "id": "p-tomas",
+   "kind": "person",
+   "title": "Tomas Lindqvist",
+   "tags": [
+    "clients/meridian"
+   ],
+   "body": "Meridian's founder. Believes he is the final approver. May be right.",
+   "facet": {
+    "given_name": "Tomas",
+    "family_name": "Lindqvist",
+    "org": "Meridian",
+    "role": "Founder"
+   },
+   "props": {
+    "email": "tomas@example.org"
+   }
+  },
+  {
+   "id": "p-sam",
+   "kind": "person",
+   "title": "Sam Oyelaran",
+   "tags": [
+    "work/studio"
+   ],
+   "body": "Illustration and motion at Halcyon. Fastest person here when the brief is clear and completely stuck when it is not.",
+   "facet": {
+    "given_name": "Sam",
+    "family_name": "Oyelaran",
+    "org": "Halcyon Studio",
+    "role": "Designer"
+   }
+  },
+  {
+   "id": "p-ines",
+   "kind": "person",
+   "title": "Ines Carvalho",
+   "tags": [
+    "work/studio",
+    "home"
+   ],
+   "body": "Runs everything at Halcyon that is not design. The reason the studio has not fallen over.",
+   "facet": {
+    "given_name": "Ines",
+    "family_name": "Carvalho",
+    "org": "Halcyon Studio",
+    "role": "Operations",
+    "birthday": "1991-10-03"
+   }
+  },
+  {
+   "id": "p-ruth",
+   "kind": "person",
+   "title": "Ruth Anand",
+   "tags": [
+    "clients/northwind"
+   ],
+   "body": "Northwind. Fair about the overrun, which she did not have to be.",
+   "facet": {
+    "given_name": "Ruth",
+    "family_name": "Anand",
+    "org": "Northwind",
+    "role": "Head of Product"
+   }
+  },
+  {
+   "id": "n-quick",
+   "kind": "note",
+   "title": "Quick capture, no tags, no thought",
+   "body": "Ask Ruth whether Northwind ever used the alternate mark.\n\nThis is what capture looks like when you are walking: a sentence, no tags, no kind chosen, sorted out later or never. It still turns up in search, which is the whole point of letting it be untidy."
+  }
+ ],
+ "books": [
+  {
+   "title": "The Elements of Typographic Style",
+   "author": "Robert Bringhurst",
+   "pages": 384,
+   "year": 1992,
+   "rating": 5,
+   "shelf": "craft",
+   "tags": [
+    "craft/typography",
+    "home/reading"
+   ],
+   "body": "The book everyone cites and few finish. Worth finishing."
+  },
+  {
+   "title": "Grid Systems in Graphic Design",
+   "author": "Josef Muller-Brockmann",
+   "pages": 176,
+   "year": 1981,
+   "rating": 5,
+   "shelf": "craft",
+   "tags": [
+    "craft/layout",
+    "home/reading"
+   ]
+  },
+  {
+   "title": "Designing Data-Intensive Applications",
+   "author": "Martin Kleppmann",
+   "pages": 616,
+   "year": 2017,
+   "rating": 5,
+   "shelf": "technical",
+   "tags": [
+    "home/reading"
+   ],
+   "body": "Read for the chapter on replication and stayed for everything else."
+  },
+  {
+   "title": "The Design of Everyday Things",
+   "author": "Don Norman",
+   "pages": 368,
+   "year": 1988,
+   "rating": 4,
+   "shelf": "craft",
+   "tags": [
+    "home/reading"
+   ]
+  },
+  {
+   "title": "Thinking with Type",
+   "author": "Ellen Lupton",
+   "pages": 224,
+   "year": 2004,
+   "rating": 4,
+   "shelf": "craft",
+   "tags": [
+    "craft/typography",
+    "home/reading"
+   ]
+  },
+  {
+   "title": "The Visual Display of Quantitative Information",
+   "author": "Edward Tufte",
+   "pages": 197,
+   "year": 1983,
+   "rating": 4,
+   "shelf": "craft",
+   "tags": [
+    "home/reading"
+   ]
+  },
+  {
+   "title": "A Philosophy of Software Design",
+   "author": "John Ousterhout",
+   "pages": 190,
+   "year": 2018,
+   "rating": 4,
+   "shelf": "technical",
+   "tags": [
+    "home/reading"
+   ]
+  },
+  {
+   "title": "Interaction of Color",
+   "author": "Josef Albers",
+   "pages": 208,
+   "year": 1963,
+   "rating": 5,
+   "shelf": "craft",
+   "tags": [
+    "craft/colour",
+    "home/reading"
+   ]
+  },
+  {
+   "title": "The Pragmatic Programmer",
+   "author": "Andrew Hunt",
+   "pages": 352,
+   "year": 1999,
+   "rating": 3,
+   "shelf": "technical",
+   "tags": [
+    "home/reading"
+   ]
+  },
+  {
+   "title": "Ways of Seeing",
+   "author": "John Berger",
+   "pages": 176,
+   "year": 1972,
+   "rating": 5,
+   "shelf": "craft",
+   "tags": [
+    "home/reading"
+   ]
+  },
+  {
+   "title": "The Shape of Design",
+   "author": "Frank Chimero",
+   "pages": 144,
+   "year": 2012,
+   "rating": 4,
+   "shelf": "craft",
+   "tags": [
+    "home/reading"
+   ]
+  },
+  {
+   "title": "Refactoring UI",
+   "author": "Adam Wathan",
+   "pages": 254,
+   "year": 2018,
+   "rating": 3,
+   "shelf": "craft",
+   "tags": [
+    "home/reading"
+   ]
+  },
+  {
+   "title": "How Buildings Learn",
+   "author": "Stewart Brand",
+   "pages": 243,
+   "year": 1994,
+   "rating": 5,
+   "shelf": "general",
+   "tags": [
+    "home/reading"
+   ],
+   "body": "About architecture, and the best book about maintaining software I have read."
+  },
+  {
+   "title": "Seeing Like a State",
+   "author": "James C. Scott",
+   "pages": 464,
+   "year": 1998,
+   "rating": 4,
+   "shelf": "general",
+   "tags": [
+    "home/reading"
+   ]
+  },
+  {
+   "title": "The Timeless Way of Building",
+   "author": "Christopher Alexander",
+   "pages": 552,
+   "year": 1979,
+   "rating": 4,
+   "shelf": "general",
+   "tags": [
+    "home/reading"
+   ]
+  },
+  {
+   "title": "Understanding Comics",
+   "author": "Scott McCloud",
+   "pages": 216,
+   "year": 1993,
+   "rating": 5,
+   "shelf": "craft",
+   "tags": [
+    "home/reading"
+   ]
+  },
+  {
+   "title": "Letters of Credit",
+   "author": "Walter Tracy",
+   "pages": 224,
+   "year": 1986,
+   "rating": 4,
+   "shelf": "craft",
+   "tags": [
+    "craft/typography",
+    "home/reading"
+   ]
+  },
+  {
+   "title": "Detail in Typography",
+   "author": "Jost Hochuli",
+   "pages": 64,
+   "year": 1987,
+   "rating": 4,
+   "shelf": "craft",
+   "tags": [
+    "craft/typography",
+    "home/reading"
+   ]
+  },
+  {
+   "title": "The Mom Test",
+   "author": "Rob Fitzpatrick",
+   "pages": 136,
+   "year": 2013,
+   "rating": 4,
+   "shelf": "business",
+   "tags": [
+    "work/business",
+    "home/reading"
+   ],
+   "body": "Short, and it changed how the first client conversation goes."
+  },
+  {
+   "title": "Company of One",
+   "author": "Paul Jarvis",
+   "pages": 256,
+   "year": 2019,
+   "rating": 3,
+   "shelf": "business",
+   "tags": [
+    "work/business",
+    "home/reading"
+   ]
+  },
+  {
+   "title": "Making Things Happen",
+   "author": "Scott Berkun",
+   "pages": 408,
+   "year": 2008,
+   "rating": 3,
+   "shelf": "business",
+   "tags": [
+    "work/business",
+    "home/reading"
+   ]
+  },
+  {
+   "title": "Emotional Design",
+   "author": "Don Norman",
+   "pages": 272,
+   "year": 2004,
+   "rating": 3,
+   "shelf": "craft",
+   "tags": [
+    "home/reading"
+   ]
+  },
+  {
+   "title": "The Nature of Order, Book One",
+   "author": "Christopher Alexander",
+   "pages": 476,
+   "year": 2002,
+   "rating": 4,
+   "shelf": "general",
+   "tags": [
+    "home/reading"
+   ]
+  },
+  {
+   "title": "Hackers and Painters",
+   "author": "Paul Graham",
+   "pages": 272,
+   "year": 2004,
+   "rating": 3,
+   "shelf": "technical",
+   "tags": [
+    "home/reading"
+   ]
+  }
+ ]
+}

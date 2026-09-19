@@ -199,6 +199,41 @@ regretting it is one command.
 
 ---
 
+## The public site
+
+`site/` is a static showcase: a landing page and a browser-only search demo.
+It is deployed to Vercel, and it is deliberately **not** Vault.
+
+Vault cannot run on a serverless host. The whole design is a database file you
+own, and a serverless filesystem is thrown away between requests, so a SQLite
+file written there is gone by the next one. What the site ships instead is a
+read-only copy of the query engine over 70 synthetic items baked into the
+page, and it says so at the top rather than letting a visitor assume the
+running thing is the product.
+
+That read-only engine is the interesting part. The query language exists there
+a second time, in JavaScript, and two implementations of one grammar drift
+silently: a query that should return eleven items returns nine, and the page
+still looks like it works. So it is checked instead of trusted:
+
+```
+python3 site/build.py        # build a throwaway vault, export it, and record
+                             # what the real engine answers for every query
+                             # the demo advertises
+cd tests && python3 -m unittest test_site
+                             # replay those queries through the JavaScript and
+                             # fail if a single item differs, in content or order
+```
+
+`tests/test_site.py` also asserts that every example offered in the interface
+is one of the queries that was checked, that the published corpus contains
+nothing from a real vault, and that no page fetches anything from a third
+party — the site makes the same offline promise the application does.
+
+To change the demo data, edit `site/corpus.json` and re-run `site/build.py`.
+
+---
+
 ## Honest limitations
 
 **No semantic search.** Real embeddings need a model download or an external

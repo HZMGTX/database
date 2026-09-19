@@ -1,16 +1,20 @@
 # ── The database and its sidecars ────────────────────────────────────────────
 # Vault's data lives in ./data/ so it sits beside the code and is trivial to
 # copy, but it is NEVER committed: it is personal data.
-data/
+#
+# Every path here is anchored with a leading slash. Without one, `data/`
+# matches a directory of that name at ANY depth -- which silently excluded
+# site/data/, the generated corpus the public demo is built from.
+/data/
 *.db
 *.db-wal
 *.db-shm
 
 # ── Attachments, backups, logs, scratch ──────────────────────────────────────
-files/
-backups/
-inbox/
-logs/
+/files/
+/backups/
+/inbox/
+/logs/
 
 # ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
