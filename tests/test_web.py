@@ -69,12 +69,37 @@ class TestStaticServing(WebTestCase):
                 self.assertIn(expected, headers["Content-Type"])
                 self.assertTrue(body)
 
-    def test_unknown_paths_fall_through_to_the_app(self):
-        """The router lives in the page, so an unknown path is its problem,
-        not a 404."""
-        status, headers, body = self.get("/some/client/route")
-        self.assertEqual(status, 200)
-        self.assertIn(b"<title>Vault</title>", body)
+    def test_unknown_routes_fall_through_to_the_app(self):
+        """The router lives in the page, so an extensionless path is its
+        problem, not a 404."""
+        for path in ("/some/client/route", "/item/abc123"):
+            with self.subTest(path=path):
+                status, _, body = self.get(path)
+                self.assertEqual(status, 200)
+                self.assertIn(b"<title>Vault</title>", body)
+
+    def test_a_missing_asset_is_a_404_not_the_page(self):
+        """Regression: the SPA fallback answered every unknown path with
+        index.html, so a stale cached page asking for a module that has
+        since been deleted got HTML with a 200 and the browser reported
+        "Unexpected token '<'" from a file nobody has any more.
+
+        theme.js and customizer.js are the real case: both were deleted when
+        the theme engine was removed.
+        """
+        for path in ("/theme.js", "/customizer.js", "/nope.css", "/missing.png"):
+            with self.subTest(path=path):
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    self.get(path)
+                self.assertEqual(ctx.exception.code, 404)
+
+    def test_the_asset_404_says_what_to_do_about_it(self):
+        try:
+            self.get("/theme.js")
+            self.fail("expected a 404")
+        except urllib.error.HTTPError as exc:
+            detail = json.loads(exc.read())["detail"]
+        self.assertIn("cached", detail)
 
     def test_a_path_cannot_escape_the_web_root(self):
         request = urllib.request.Request(self.base + "/../../../etc/passwd")

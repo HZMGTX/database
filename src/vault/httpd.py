@@ -12,7 +12,7 @@ import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable, Optional
 from wsgiref.handlers import SimpleHandler
 
@@ -39,9 +39,22 @@ def static_handler(root: Path) -> Callable:
 
         if target.is_dir():
             target = target / "index.html"
+
         if not target.is_file():
-            # Unknown paths fall through to the single-page app, so the
-            # in-app router owns them.
+            # A missing *asset* is a 404. Only extensionless paths fall
+            # through to the single-page app.
+            #
+            # Falling back to index.html for everything is the usual SPA
+            # arrangement and it is wrong for assets: a stale cached page
+            # asking for a module that has since been deleted gets HTML with
+            # a 200, and the browser reports "Unexpected token '<'" from a
+            # file the developer no longer has. A 404 says what actually
+            # happened.
+            if PurePosixPath(rel).suffix:
+                raise ProblemError(
+                    404, "No such file",
+                    f"{request.path} is not part of this build. "
+                    f"If a page is asking for it, that page is cached -- reload it.")
             target = root / "index.html"
             if not target.is_file():
                 raise ProblemError(404, "Not found", request.path)
