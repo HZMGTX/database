@@ -6,7 +6,10 @@ is a better fixture anyway: it is built from the same file the bot builds
 from, and it can be seeded to any size.
 """
 
+import json
+import shutil
 import sqlite3
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -135,27 +138,76 @@ class TestVyrexConnector(VaultTestCase):
 
 
 class TestClientModulesExist(unittest.TestCase):
-    """The clients ship in this repository because it is the only one set up
-    for writing; these assert they are present and syntactically plausible."""
+    """The canonical copies of the two client modules.
+
+    Each of these is also installed in its own project, where it is the file
+    that actually runs; the copy here exists so the code lives beside the
+    server it talks to. The tests that matter are in those projects, against
+    their own runners -- what is checked here is that the copies are present,
+    parse, and still have the three properties the projects depend on.
+    """
 
     ROOT = Path(__file__).resolve().parent.parent / "clients"
 
+    # Installed path in the project, and the canonical copy here.
+    CLIENTS = {
+        "vyrex/vaultService.js": "src/services/vaultService.js",
+        "genesis/src/index.ts": "lib/vault-client/src/index.ts",
+    }
+
     def test_both_clients_are_present(self):
-        self.assertTrue((self.ROOT / "vyrex" / "vaultClient.js").is_file())
-        self.assertTrue((self.ROOT / "genesis" / "vault-client.ts").is_file())
+        for name in self.CLIENTS:
+            with self.subTest(client=name):
+                self.assertTrue((self.ROOT / name).is_file(), name)
         self.assertTrue((self.ROOT / "README.md").is_file())
+        self.assertTrue((self.ROOT / "vyrex" / "vaultService.test.js").is_file())
+        # The genesis copy is a whole workspace package, not a loose file.
+        for name in ("package.json", "tsconfig.json", "README.md"):
+            self.assertTrue((self.ROOT / "genesis" / name).is_file(), name)
+
+    def test_the_genesis_package_uses_the_monorepo_scope(self):
+        """@genesis/ was wrong: that monorepo scopes its packages @workspace/,
+        and an import under the wrong scope does not resolve at all."""
+        manifest = json.loads((self.ROOT / "genesis" / "package.json").read_text())
+        self.assertEqual(manifest["name"], "@workspace/vault-client")
+        self.assertEqual(manifest["exports"]["."], "./src/index.ts")
 
     def test_clients_fail_soft_rather_than_throwing(self):
-        """A sidecar must not be able to take down the application it sits
-        beside, so the default path swallows errors."""
-        js = (self.ROOT / "vyrex" / "vaultClient.js").read_text()
-        self.assertIn("return [];", js)
-        self.assertIn("return null;", js)
+        """A sidecar must not be able to take down what it sits beside, so the
+        default path returns an empty result and `strict` opts back in."""
+        for name in self.CLIENTS:
+            with self.subTest(client=name):
+                source = (self.ROOT / name).read_text()
+                self.assertIn("strict", source)
+                self.assertRegex(source, r"return (\[\]|null|\{ hits: \[\])")
 
     def test_clients_send_an_idempotency_key(self):
-        for name in ("vyrex/vaultClient.js", "genesis/vault-client.ts"):
+        """A timeout is the failure most likely to be retried, and a retry
+        without this creates a second copy of whatever was captured."""
+        for name in self.CLIENTS:
             with self.subTest(client=name):
                 self.assertIn("Idempotency-Key", (self.ROOT / name).read_text())
+
+    def test_clients_render_the_snippet_markers(self):
+        """A hit's snippet wraps matches in STX and ETX rather than markup, so
+        a caller that prints one unprocessed emits two invisible control
+        characters. Both clients have to offer a way out."""
+        for name in self.CLIENTS:
+            with self.subTest(client=name):
+                source = (self.ROOT / name).read_text()
+                self.assertIn("renderSnippet", source)
+                self.assertIn("\\u0002", source)
+                self.assertIn("\\u0003", source)
+
+    def test_the_javascript_client_parses(self):
+        """`node --check` is cheap and catches the copy landing truncated."""
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not installed")
+        result = subprocess.run(
+            [node, "--check", str(self.ROOT / "vyrex" / "vaultService.js")],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":
