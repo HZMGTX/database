@@ -220,38 +220,41 @@ regretting it is one command.
 
 ---
 
-## The public site
+## The hosted database
 
-`site/` is a static showcase: a landing page and a browser-only search demo.
-It is deployed to Vercel, and it is deliberately **not** Vault.
+`web/` is a Postgres database with a web interface and an HTTP API, deployed
+on Vercel. It holds the same shape of data as the local tool and is reachable
+from anywhere, which the local one is not.
 
-Vault cannot run on a serverless host. The whole design is a database file you
-own, and a serverless filesystem is thrown away between requests, so a SQLite
-file written there is gone by the next one. What the site ships instead is a
-read-only copy of the query engine over 70 synthetic items baked into the
-page, and it says so at the top rather than letting a visitor assume the
-running thing is the product.
-
-That read-only engine is the interesting part. The query language exists there
-a second time, in JavaScript, and two implementations of one grammar drift
-silently: a query that should return eleven items returns nine, and the page
-still looks like it works. So it is checked instead of trusted:
+It is **not** a demo. It starts with whatever you put in it, or with the
+existing data loaded through `POST /api/admin/import`, and everything written
+to it is kept.
 
 ```
-python3 site/build.py        # build a throwaway vault, export it, and record
-                             # what the real engine answers for every query
-                             # the demo advertises
-cd tests && python3 -m unittest test_site
-                             # replay those queries through the JavaScript and
-                             # fail if a single item differs, in content or order
+GET    /api/health                  up? attached? how many items?
+GET    /api/stats                   counts by kind and tag
+GET    /api/items?q=...             search
+POST   /api/items                   write one
+GET    /api/items/:ref              read one
+PATCH  /api/items/:ref              change only the fields you send
+DELETE /api/items/:ref              to the trash
 ```
 
-`tests/test_site.py` also asserts that every example offered in the interface
-is one of the queries that was checked, that the published corpus contains
-nothing from a real vault, and that no page fetches anything from a third
-party — the site makes the same offline promise the application does.
+Everything but `/api/health` requires `Authorization: Bearer $API_TOKEN`, and
+the API refuses every request when `API_TOKEN` is unset rather than defaulting
+to open.
 
-To change the demo data, edit `site/corpus.json` and re-run `site/build.py`.
+Setup and the full API are in [web/README.md](web/README.md).
+
+### This does not replace anything
+
+VYREX keeps its own `better-sqlite3` store. That one is synchronous because
+the file is on the same disk, and 899 call sites across 84 files depend on
+that being synchronous. No network-backed database can be synchronous in
+Node, so swapping it would mean rewriting all of them into async and turning
+every query into a network round trip. The projects talk to this database
+over HTTP instead, asynchronously and fail-soft, at whatever few places are
+worth it — see [clients/](clients/).
 
 ---
 

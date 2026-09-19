@@ -1,0 +1,11 @@
+{
+  "name": "hzmgtx-database",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A database that stores data, reachable over HTTP from anywhere.",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

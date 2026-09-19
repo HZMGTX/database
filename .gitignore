@@ -1,10 +1,9 @@
-# ── The database and its sidecars ────────────────────────────────────────────
-# Vault's data lives in ./data/ so it sits beside the code and is trivial to
-# copy, but it is NEVER committed: it is personal data.
+# ── The local database and its sidecars ──────────────────────────────────────
+# Data lives in ./data/ so it sits beside the code and is trivial to copy, but
+# it is NEVER committed: it is personal data.
 #
 # Every path here is anchored with a leading slash. Without one, `data/`
-# matches a directory of that name at ANY depth -- which silently excluded
-# site/data/, the generated corpus the public demo is built from.
+# matches a directory of that name at ANY depth.
 /data/
 *.db
 *.db-wal
@@ -22,6 +21,11 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+
+# ── The web app ──────────────────────────────────────────────────────────────
+node_modules/
+.vercel/
+*.tsbuildinfo
 
 # ── OS noise ─────────────────────────────────────────────────────────────────
 .DS_Store

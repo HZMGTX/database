@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Database</title>
+<meta name="description" content="A database. Stores things, searches them, keeps them.">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/app.css">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<!-- Shown until a token is accepted. Nothing else is reachable without one. -->
+<div class="gate" id="gate" hidden>
+  <form class="gate-card" id="gate-form">
+    <h1>Database</h1>
+    <p>This database is private. Paste the access token to open it.</p>
+    <label class="sr-only" for="token">Access token</label>
+    <input id="token" type="password" placeholder="Access token" autocomplete="current-password" spellcheck="false">
+    <button type="submit" class="button primary">Open</button>
+    <p class="gate-error" id="gate-error" hidden></p>
+    <p class="gate-hint" id="gate-hint"></p>
+  </form>
+</div>
+
+<div class="app" id="app" hidden>
+  <header class="top">
+    <span class="brand"><span class="dot"></span> Database</span>
+    <form class="omni" id="omni" role="search">
+      <input id="q" type="search" spellcheck="false" autocomplete="off"
+             placeholder="search everything —  legendary  ·  kind:fish value>8000  ·  tag:work/*">
+    </form>
+    <button class="button primary" id="new-item" type="button">+ Add</button>
+    <button class="button ghost" id="lock" type="button" title="Forget the token on this device">Lock</button>
+  </header>
+
+  <p class="explain" id="explain" aria-live="polite"></p>
+
+  <div class="layout">
+    <aside class="rail">
+      <div class="totals" id="totals"></div>
+      <section>
+        <h2>Kinds</h2>
+        <ul class="facets" id="kinds"></ul>
+      </section>
+      <section>
+        <h2>Tags</h2>
+        <ul class="facets" id="tags"></ul>
+      </section>
+      <section>
+        <h2>Syntax</h2>
+        <dl class="syntax">
+          <dt><code>a b</code></dt><dd>both words</dd>
+          <dt><code>"a b"</code></dt><dd>that phrase</dd>
+          <dt><code>-a</code></dt><dd>without it</dd>
+          <dt><code>kind:fish,ores</code></dt><dd>either kind</dd>
+          <dt><code>tag:work/*</code></dt><dd>tag and below</dd>
+          <dt><code>value&gt;5000</code></dt><dd>any field, compared</dd>
+          <dt><code>rarity:Mythic</code></dt><dd>any field, matched</dd>
+          <dt><code>is:pinned</code></dt><dd>also untagged, orphan, trashed</dd>
+          <dt><code>sort:title</code></dt><dd>also recent, created, kind</dd>
+        </dl>
+      </section>
+    </aside>
+
+    <main class="results-col">
+      <p class="count" id="count" aria-live="polite"></p>
+      <ol class="results" id="results"></ol>
+      <button class="button ghost more" id="more" type="button" hidden>Load more</button>
+      <div class="empty" id="empty" hidden>
+        <h2 id="empty-title">Nothing yet.</h2>
+        <p id="empty-body" class="muted"></p>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Detail / editor -->
+<div class="sheet" id="sheet" hidden>
+  <div class="scrim" id="scrim"></div>
+  <form class="sheet-panel" id="editor" role="dialog" aria-modal="true" aria-labelledby="sheet-heading">
+    <div class="sheet-head">
+      <h2 id="sheet-heading">Edit</h2>
+      <button type="button" class="icon" id="close" aria-label="Close">✕</button>
+    </div>
+
+    <label for="f-title">Title</label>
+    <input id="f-title" type="text" maxlength="500" placeholder="What is it?">
+
+    <div class="row2">
+      <div>
+        <label for="f-kind">Kind</label>
+        <input id="f-kind" type="text" list="kind-list" spellcheck="false" placeholder="note">
+        <datalist id="kind-list"></datalist>
+      </div>
+      <div>
+        <label for="f-tags">Tags <span class="muted">space or comma separated</span></label>
+        <input id="f-tags" type="text" spellcheck="false" placeholder="work/finance personal">
+      </div>
+    </div>
+
+    <label for="f-body">Body</label>
+    <textarea id="f-body" rows="8" placeholder="Anything. It gets indexed."></textarea>
+
+    <label for="f-props">Fields <span class="muted">JSON — numbers here become searchable ranges</span></label>
+    <textarea id="f-props" rows="4" spellcheck="false" placeholder='{"value": 8800, "rarity": "Legendary"}'></textarea>
+
+    <p class="form-error" id="form-error" hidden></p>
+
+    <div class="sheet-foot">
+      <label class="check"><input type="checkbox" id="f-pinned"> Pinned</label>
+      <span class="grow"></span>
+      <button type="button" class="button danger" id="delete" hidden>Delete</button>
+      <button type="submit" class="button primary" id="save">Save</button>
+    </div>
+    <p class="meta-line" id="meta-line"></p>
+  </form>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
