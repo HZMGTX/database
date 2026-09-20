@@ -3,6 +3,7 @@
  * consistent errors, and CORS for the clients that call this from elsewhere.
  */
 import { NotConfigured } from "./db.js";
+import { ensureSchema } from "./schema.js";
 
 /**
  * Checks the bearer token.
@@ -95,6 +96,18 @@ export function handler(run, { open = false, methods = ["GET"] } = {}) {
     if (!open) {
       const auth = authorize(req);
       if (!auth.ok) return fail(res, auth.status, auth.detail);
+    }
+
+    // A deploy that ships code depending on a new table should not wait for
+    // somebody to remember to migrate. After the first request on a warm
+    // instance this costs nothing; a failure here is logged rather than
+    // fatal, because a read that would have worked anyway should still work.
+    try {
+      await ensureSchema();
+    } catch (error) {
+      if (!(error instanceof NotConfigured)) {
+        console.error("[schema]", error.message);
+      }
     }
 
     try {

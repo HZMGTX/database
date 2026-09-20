@@ -7,6 +7,7 @@
  */
 import { handler, send } from "./_lib/http.js";
 import { connectionString, query } from "./_lib/db.js";
+import { ensureSchema } from "./_lib/schema.js";
 
 export default handler(
   async (req, res) => {
@@ -28,23 +29,33 @@ export default handler(
       const started = Date.now();
       const { rows } = await query(
         "SELECT count(*)::bigint AS items FROM item WHERE deleted_at IS NULL");
+      // Which version of the schema this database is actually on. Already
+      // worked out before this handler ran, so it costs nothing here, and
+      // it is the one way to tell from outside whether a deploy and its
+      // database are in step -- without needing a credential to ask.
+      const schema = await ensureSchema().catch(() => null);
+
       return send(res, 200, {
         ok: true,
         storage: "postgres",
         secured,
         items: Number(rows[0].items),
+        schema,
         latency_ms: Date.now() - started,
       });
     } catch (error) {
-      // A database that is attached but has no tables yet is a normal state
-      // on a first deploy, not a failure worth a 500.
-      const needsMigration = /relation "item" does not exist/i.test(error.message);
-      return send(res, needsMigration ? 503 : 500, {
+      // The tables are created by the first request that reaches a database
+      // without them, so getting here means that failed -- which is worth
+      // saying, rather than repeating advice that has already been taken.
+      const noTables = /relation "item" does not exist/i.test(error.message);
+      return send(res, noTables ? 503 : 500, {
         ok: false,
         storage: "postgres",
         secured,
-        detail: needsMigration
-          ? "Attached, but the tables are not created yet. POST /api/admin/migrate"
+        detail: noTables
+          ? "Attached, but the tables are not there and creating them did " +
+            "not work. Check the function logs for [schema], or POST " +
+            "/api/admin/migrate to see the error directly."
           : error.message,
       });
     }

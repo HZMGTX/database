@@ -12,10 +12,12 @@
       "includeFiles": "db/**"
     },
     "api/items/*.js": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "db/schema.sql"
     },
     "api/*.js": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "db/schema.sql"
     }
   },
   "headers": [
