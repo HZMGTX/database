@@ -203,8 +203,51 @@ function clean(input) {
            pinned: Boolean(input.pinned) };
 }
 
-/** Writes a new item, and its first revision, in one transaction. */
-export async function create(input, actor = "api") {
+/** How long a key is remembered. Far longer than any sane retry window. */
+const KEY_LIFETIME = "1 day";
+
+/**
+ * Claims an idempotency key, inside the caller's transaction.
+ *
+ * Returns the uid the key already produced, or null when this is the first
+ * time the key has been seen and the write should go ahead.
+ *
+ * `ON CONFLICT DO UPDATE` rather than `DO NOTHING` because only the update
+ * form takes a row lock: if two requests carrying the same key arrive at
+ * once, the second blocks here until the first commits, and then reads the
+ * uid the first wrote. `DO NOTHING` returns no row at all in that case, and
+ * the second request would go on to write a duplicate -- which is the whole
+ * failure this exists to prevent.
+ *
+ * `xmax = 0` is true only for a row this transaction inserted itself, which
+ * is how a fresh key is told apart from one being replayed.
+ */
+async function claimKey(client, key) {
+  // Expired keys go first, so a conflict below always means a live key and
+  // the table cannot grow without bound. The index on created_at makes this
+  // an empty range scan in the normal case.
+  await client.query(
+    `DELETE FROM idempotency WHERE created_at < now() - $1::interval`,
+    [KEY_LIFETIME]);
+
+  const { rows } = await client.query(
+    `INSERT INTO idempotency (key) VALUES ($1)
+     ON CONFLICT (key) DO UPDATE SET key = EXCLUDED.key
+       RETURNING item_uid, (xmax = 0) AS inserted`,
+    [key]);
+
+  return rows[0].inserted ? null : rows[0].item_uid;
+}
+
+/**
+ * Writes a new item, and its first revision, in one transaction.
+ *
+ * With an `Idempotency-Key`, a repeat of a request that already succeeded
+ * returns the item the first one created instead of writing a second copy.
+ * That is what makes a retry after a timeout safe, and a timeout is the one
+ * failure where the caller cannot tell whether the write landed.
+ */
+export async function create(input, actor = "api", { idempotencyKey = "" } = {}) {
   const value = clean(input);
   if (!value.title && !value.body) {
     const error = new Error("An item needs at least a title or a body.");
@@ -218,7 +261,33 @@ export async function create(input, actor = "api") {
     throw error;
   }
 
+  const key = String(idempotencyKey ?? "").trim();
+  if (key.length > 255) {
+    const error = new Error("An Idempotency-Key is at most 255 characters.");
+    error.status = 400;
+    throw error;
+  }
+
   return transaction(async (client) => {
+    if (key) {
+      const already = await claimKey(client, key);
+      if (already) {
+        const found = await client.query(
+          `SELECT ${COLUMNS} FROM item i WHERE i.uid = $1`, [already]);
+        if (!found.rows.length) {
+          // The key is live but what it made has been purged. Writing a new
+          // item would undo a deliberate deletion, so say what happened
+          // instead of guessing which the caller wanted.
+          const error = new Error(
+            `That Idempotency-Key was already used to create item ${already}, ` +
+            `which has since been deleted. Use a new key to write a new item.`);
+          error.status = 409;
+          throw error;
+        }
+        return { ...shape(found.rows[0]), replayed: true };
+      }
+    }
+
     // A project named on a write is created if it is new, so filing
     // something under a project you have not set up yet just works.
     if (value.project) await ensureProject(client, value.project);
@@ -234,6 +303,13 @@ export async function create(input, actor = "api") {
     await client.query(
       "INSERT INTO revision (item_uid, rev, doc, action, actor) VALUES ($1,$2,$3::jsonb,$4,$5)",
       [item.uid, item.rev, JSON.stringify(item), "create", actor]);
+
+    // Same transaction as the item, so the key is only remembered if the
+    // item it names is actually there to be returned.
+    if (key) {
+      await client.query(
+        "UPDATE idempotency SET item_uid = $1 WHERE key = $2", [item.uid, key]);
+    }
     return item;
   });
 }

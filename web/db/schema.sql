@@ -228,6 +228,33 @@ CREATE TRIGGER item_counts
   FOR EACH ROW EXECUTE FUNCTION bump_counts();
 
 -- ---------------------------------------------------------------------------
+-- Idempotency
+--
+-- A write that times out is the failure a caller is most likely to retry,
+-- and the one case where it cannot tell whether the first attempt landed.
+-- Both clients send an `Idempotency-Key` and document that a retry returns
+-- the first call's result rather than creating a second copy. This is what
+-- makes that true; without it the header was accepted and ignored, and the
+-- documentation was simply wrong.
+--
+-- The key is remembered, not the response: the item's uid is enough to
+-- serve the original result, and storing the whole document would be a
+-- second copy of it that could fall out of step.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS idempotency (
+  key        TEXT PRIMARY KEY,
+  item_uid   TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT idempotency_key_length CHECK (char_length(key) BETWEEN 1 AND 255)
+);
+
+-- Keys are only useful for as long as a client might retry, so every write
+-- forgets the ones past that window before claiming its own. This index is
+-- what makes that sweep an empty range scan rather than a table scan.
+CREATE INDEX IF NOT EXISTS idempotency_age_idx ON idempotency (created_at);
+
+-- ---------------------------------------------------------------------------
 -- Bookkeeping for the one-time import, so it can resume after a timeout
 -- rather than starting over or writing everything twice.
 -- ---------------------------------------------------------------------------

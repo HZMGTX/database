@@ -17,8 +17,13 @@ export default handler(
     }
 
     const body = await readJson(req);
-    const item = await create(body);
+    // A repeat of a request that already succeeded returns what it created,
+    // rather than a second copy of it.
+    const item = await create(body, "api", {
+      idempotencyKey: req.headers["idempotency-key"] || "",
+    });
     res.setHeader("Location", `/api/items/${item.uid}`);
+    if (item.replayed) res.setHeader("Idempotent-Replayed", "true");
     return send(res, 201, item);
   },
   { methods: ["GET", "POST"] },

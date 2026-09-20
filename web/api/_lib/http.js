@@ -78,8 +78,12 @@ export async function readJson(req) {
 export function handler(run, { open = false, methods = ["GET"] } = {}) {
   return async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Api-Token");
+    res.setHeader("Access-Control-Allow-Headers",
+                  "Authorization, Content-Type, X-Api-Token, Idempotency-Key");
     res.setHeader("Access-Control-Allow-Methods", methods.concat("OPTIONS").join(", "));
+    // Without this a browser can see the status but not where the new item
+    // went, nor whether the write was a replay.
+    res.setHeader("Access-Control-Expose-Headers", "Location, Idempotent-Replayed");
 
     if (req.method === "OPTIONS") {
       res.status(204);
