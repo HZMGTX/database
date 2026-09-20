@@ -188,10 +188,20 @@ async function search(query, options = {}) {
 /**
  * Writes something into the database.
  *
- * The request carries an `Idempotency-Key`, so retrying after a timeout
- * returns the first call's result instead of creating a second copy — which
- * matters here, because a timeout is the failure a Discord handler is most
- * likely to hit and most likely to retry.
+ * A request that never gets an answer — a timeout, a reset connection — is
+ * sent once more, because that is the one failure where the caller cannot
+ * tell whether the write landed. Both attempts carry the same
+ * `Idempotency-Key`, and the database returns what the first one created
+ * rather than writing a second copy, so the retry cannot duplicate
+ * anything.
+ *
+ * A failure the database *answered* with is not retried: it would be
+ * refused again, and the key is already spent on it.
+ *
+ * The cost of the retry is time. A write that the database never answers
+ * takes up to twice `DB_TIMEOUT_MS` before giving up, so defer the
+ * interaction before calling this. Losing what somebody typed is worse than
+ * making them wait for it.
  *
  * @param {object} item
  * @param {string} item.title - Required; what the thing is
@@ -200,21 +210,38 @@ async function search(query, options = {}) {
  * @param {Array<string>} [item.tags=[]] - Hierarchical, e.g. `support/tickets`
  * @param {object} [item.props={}] - Arbitrary fields, queryable once written
  * @param {object} [item.facet] - Kind-specific fields, e.g. `{ status, due }`
+ * @param {string} [item.idempotencyKey] - Reuse a key to make your own retry
+ *   safe; one is generated per call otherwise
  * @param {boolean} [item.strict=false] - Throw instead of returning null
  * @returns {Promise<object|null>} The created item, or null when the database is unreachable
  */
 async function capture(item = {}) {
   const { title, body = '', kind = 'note', tags = [], props = {}, facet,
-          strict = false } = item;
+          idempotencyKey, strict = false } = item;
   try {
     if (!title) throw new Error('db: capture needs a title');
     const payload = { kind, title, body, tags, props };
     if (facet) payload.facet = facet;
-    return await request('/items', {
+
+    // One key across both attempts. Generating a second one for the retry
+    // would defeat the whole point and write the item twice.
+    const key = idempotencyKey || newIdempotencyKey();
+    const send = () => request('/items', {
       method: 'POST',
       body: payload,
-      headers: { 'Idempotency-Key': idempotencyKey() },
+      headers: { 'Idempotency-Key': key },
     });
+
+    try {
+      return await send();
+    } catch (error) {
+      // `status` is set only when the database answered. Without it the
+      // request never arrived, or its answer never came back, and neither
+      // the caller nor this code knows which.
+      if (error.status) throw error;
+      note('capture retrying', error);
+      return await send();
+    }
   } catch (error) {
     note('capture', error);
     if (strict) throw error;
@@ -289,10 +316,11 @@ function renderSnippet(snippet, marks = {}) {
 }
 
 /**
- * A key unique to this attempt, so a retry is recognised as the same write.
+ * A key unique to one write, so every attempt at it is recognised as the
+ * same write rather than as several.
  * @returns {string} The idempotency key
  */
-function idempotencyKey() {
+function newIdempotencyKey() {
   return `vyrex-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 

@@ -39,6 +39,11 @@
 
   let token = "";
   let editing = null;      // the item open in the sheet, or null for a new one
+  // Stamped when the Add sheet opens and kept until the write succeeds, so
+  // that saving again after a failure finishes the first write instead of
+  // making a second copy of it. The failure this is for is the one where
+  // you cannot tell: the request went out and nothing came back.
+  let writeKey = null;
   let offset = 0;
   let lastQuery = "";
   let projects = [];       // [{slug, label, colour, n}]
@@ -50,13 +55,14 @@
 
   // ── Transport ───────────────────────────────────────────────────────────
 
-  async function api(path, { method = "GET", body, signal } = {}) {
+  async function api(path, { method = "GET", body, signal, key } = {}) {
     const response = await fetch(`/api${path}`, {
       method,
       signal,
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(key ? { "Idempotency-Key": key } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -428,6 +434,7 @@
 
   function blank() {
     editing = null;
+    writeKey = `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     ui.heading.textContent = "Add";
     ui.fTitle.value = "";
     // A new row lands in whichever project you are looking at, because that
@@ -452,6 +459,7 @@
   function hide() {
     ui.sheet.hidden = true;
     editing = null;
+    writeKey = null;
   }
 
   ui.newItem.addEventListener("click", blank);
@@ -498,8 +506,16 @@
         });
         toast("Saved.", "good");
       } else {
-        await api("/items", { method: "POST", body: payload });
-        toast("Added.", "good");
+        const saved = await api("/items", { method: "POST", body: payload, key: writeKey });
+        // Only now: until the write is in, this key is what makes trying
+        // again safe.
+        writeKey = null;
+        // Say so when the save turns out to have already gone through, so
+        // that anything typed since is visibly not in what was kept rather
+        // than quietly missing from it.
+        toast(saved?.replayed
+          ? "Already saved — the first attempt had gone through after all."
+          : "Added.", "good");
       }
       hide();
       await Promise.all([loadFacets(), run(lastQuery)]);

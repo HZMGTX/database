@@ -1,18 +1,20 @@
 'use strict';
 
 /**
- * The the database bridge has one job beyond forwarding: it must never be the reason
- * a command handler throws. A the database that is not running is the ordinary case,
- * not the exceptional one — it is a separate process on the host, started by
- * hand, and it will be down more often than it is up.
+ * The database bridge has one job beyond forwarding: it must never be the
+ * reason a command handler throws. A database that does not answer is an
+ * ordinary case, not an exceptional one — it is a serverless function
+ * across the internet, so a cold start, a dropped connection or a slow
+ * reply is a Tuesday.
  *
  * So these tests spend most of their effort on the unhappy paths: server
- * absent, server slow, server returning an error, server returning something
- * that is not JSON. Every one of them has to come back with an empty result
- * and no exception, unless the caller explicitly asked for strict mode.
+ * absent, server slow, connection dropped mid-answer, server returning an
+ * error, server returning something that is not JSON. Every one of them has
+ * to come back with an empty result and no exception, unless the caller
+ * explicitly asked for strict mode.
  *
- * A stub HTTP server stands in for the database, which keeps the test hermetic and
- * lets it produce responses a real server would not.
+ * A stub HTTP server stands in for the database, which keeps the test
+ * hermetic and lets it produce responses a real server would not.
  */
 
 const { test, before, after, beforeEach } = require('node:test');
@@ -137,6 +139,46 @@ test('two captures use different idempotency keys', async () => {
                   received[1].headers['idempotency-key']);
 });
 
+test('a write that gets no answer is retried once, with the same key', async () => {
+  // A dropped connection is the case the whole idempotency mechanism exists
+  // for: the write may have landed, and the caller cannot tell.
+  let calls = 0;
+  handler = (req, res) => {
+    calls += 1;
+    if (calls === 1) return res.destroy();
+    res.writeHead(201, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ uid: 'written-once' }));
+  };
+
+  const created = await db.capture({ title: 'survives a dropped connection' });
+
+  assert.equal(created.uid, 'written-once');
+  assert.equal(received.length, 2);
+  // The same key on both, which is what stops the retry writing a second
+  // copy. A fresh key per attempt would make the retry the bug.
+  assert.equal(received[0].headers['idempotency-key'],
+               received[1].headers['idempotency-key']);
+});
+
+test('a write the database refused is not retried', async () => {
+  // An answer means the database saw it and said no. Sending it again would
+  // be refused again, and the key is already spent on that answer.
+  handler = json(400, { detail: 'An item needs at least a title or a body.' });
+
+  assert.equal(await db.capture({ title: 'refused' }), null);
+  assert.equal(received.length, 1);
+});
+
+test('a caller can bring their own key and retry safely themselves', async () => {
+  handler = json(201, { uid: 'written-once' });
+
+  await db.capture({ title: 'one thing', idempotencyKey: 'ticket-412' });
+  await db.capture({ title: 'one thing', idempotencyKey: 'ticket-412' });
+
+  assert.equal(received[0].headers['idempotency-key'], 'ticket-412');
+  assert.equal(received[1].headers['idempotency-key'], 'ticket-412');
+});
+
 test('capture refuses an item with no title, without calling out', async () => {
   assert.equal(await db.capture({ body: 'orphaned text' }), null);
   assert.equal(received.length, 0);
@@ -167,8 +209,8 @@ test('a slow server times out rather than hanging a handler', async () => {
 });
 
 test('a server that is not running yields empty results, not a throw', async () => {
-  // The ordinary case: the database is a separate process somebody has to start,
-  // so it is down more often than it is up.
+  // Nothing listening at all: a wrong DB_URL, or no network out of the
+  // host. Every call has to answer for itself rather than throw.
   const good = process.env.DB_URL;
   process.env.DB_URL = 'http://127.0.0.1:9';
   try {

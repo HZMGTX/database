@@ -58,6 +58,19 @@ same instant shares a prefix and differs only at the end.
 `PATCH` accepts `expected_rev` (or an `If-Match` header). If the item changed
 since you read it you get **409** instead of a silent overwrite.
 
+`POST /api/items` accepts an `Idempotency-Key` header. Send the same key
+again and you get back the item the first request created, with
+`Idempotent-Replayed: true`, rather than a second copy of it. That is what
+makes it safe to retry a write that timed out — the one failure where you
+cannot tell whether it landed. Keys are remembered for a day. If what a key
+created has since been purged, reusing it is a **409** rather than a
+resurrection.
+
+The schema applies itself: the first request to reach a database that is
+behind the deployed code brings it up to date, and `GET /api/health` reports
+which version is in force. `POST /api/admin/migrate` does the same thing
+deliberately and shows you the tables.
+
 ## The query language
 
 | | |

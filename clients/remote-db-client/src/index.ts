@@ -153,6 +153,15 @@ export interface CaptureInput {
   facet?: Record<string, unknown>;
 }
 
+/** Options `capture` accepts, beyond the ones every call takes. */
+export interface CaptureOptions extends CallOptions {
+  /**
+   * Reuse one key across your own retries of a single write, so they cannot
+   * write a duplicate. A key is generated per call otherwise.
+   */
+  idempotencyKey?: string;
+}
+
 /** Options every call accepts. */
 export interface CallOptions {
   /** Throw a {@link DbError} instead of returning an empty result. */
@@ -341,20 +350,34 @@ export async function search(
 /**
  * Writes an item into the database.
  *
- * The request carries an `Idempotency-Key`, so a retry after a timeout
- * returns the first call's result rather than creating a duplicate.
+ * A request that never gets an answer -- a timeout, a dropped connection --
+ * is sent once more, because that is the one failure where the caller cannot
+ * tell whether the write landed. Both attempts carry the same
+ * `Idempotency-Key`, and the database returns what the first one created
+ * rather than writing a second copy, so the retry cannot duplicate anything.
+ *
+ * A failure the database *answered* with is not retried: it would be refused
+ * again, and the key is already spent on it. Neither is a call the caller
+ * cancelled, which is not a failure at all.
+ *
+ * The cost of the retry is time: a write that is never answered takes up to
+ * twice the timeout before giving up. Pass `timeoutMs` where that matters.
  *
  * Returns `null` rather than throwing when the database is unreachable, unless
  * `strict` is set.
  */
 export async function capture(
   item: CaptureInput,
-  options: CallOptions = {},
+  options: CaptureOptions = {},
 ): Promise<DbItem | null> {
-  const { strict, ...rest } = options;
+  const { strict, idempotencyKey, ...rest } = options;
   try {
     if (!item?.title) throw new DbError("db: capture needs a title");
-    return await request<DbItem>("/items", {
+
+    // One key across both attempts. Generating a second one for the retry
+    // would defeat the point and write the item twice.
+    const key = idempotencyKey ?? newIdempotencyKey();
+    const send = () => request<DbItem>("/items", {
       ...rest,
       method: "POST",
       body: {
@@ -365,8 +388,21 @@ export async function capture(
         props: item.props ?? {},
         ...(item.facet ? { facet: item.facet } : {}),
       },
-      headers: { "Idempotency-Key": idempotencyKey() },
+      headers: { "Idempotency-Key": key },
     });
+
+    try {
+      return await send();
+    } catch (error) {
+      // `status` is set only when the database answered. Without it the
+      // request never arrived, or its answer never came back, and nobody
+      // knows which.
+      if (error instanceof DbError && error.status !== undefined) throw error;
+      // A cancelled call looks the same from here, and retrying it would
+      // ignore what the caller asked for.
+      if (rest.signal?.aborted) throw error;
+      return await send();
+    }
   } catch (error) {
     if (strict) throw error;
     return null;
@@ -405,7 +441,10 @@ export async function available(options: CallOptions = {}): Promise<boolean> {
   }
 }
 
-/** A key unique to one attempt, so a retry is recognised as the same write. */
-function idempotencyKey(): string {
+/**
+ * A key unique to one write, so every attempt at it is recognised as the
+ * same write rather than as several.
+ */
+function newIdempotencyKey(): string {
   return `genesis-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
